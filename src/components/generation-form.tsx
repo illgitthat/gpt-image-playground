@@ -5,9 +5,11 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
 import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { GPT_IMAGE_MODELS, type GptImageModel } from '@/lib/cost-utils';
 import {
     Square,
     RectangleHorizontal,
@@ -24,7 +26,6 @@ import {
     BrickWall,
     Lock,
     LockOpen,
-    HelpCircle,
     Copy,
     Check,
     ChevronDown,
@@ -42,7 +43,7 @@ export type GenerationFormData = {
     output_compression?: number;
     background: 'transparent' | 'opaque' | 'auto';
     moderation: 'low' | 'auto';
-    model: 'gpt-image-1' | 'gpt-image-1-mini' | 'gpt-image-1.5';
+    model: GptImageModel;
 };
 
 type GenerationFormProps = {
@@ -136,10 +137,6 @@ export function GenerationForm({
     const [isCopied, setIsCopied] = React.useState(false);
     const [isAdvancedOpen, setIsAdvancedOpen] = React.useState(false);
 
-    React.useEffect(() => {
-        setModel('gpt-image-1.5');
-    }, [setModel]);
-
     const handleCopyPrompt = async () => {
         if (!prompt) return;
         try {
@@ -170,7 +167,7 @@ export function GenerationForm({
     };
 
     return (
-        <Card className='flex h-full w-full flex-col overflow-hidden rounded-lg border border-white/10 bg-black'>
+        <Card className='flex w-full flex-col rounded-lg border border-white/10 bg-black lg:h-full lg:overflow-hidden'>
             <CardHeader className='flex items-start justify-between border-b border-white/10 pb-4'>
                 <div>
                     <div className='flex items-center'>
@@ -186,42 +183,14 @@ export function GenerationForm({
                             </Button>
                         )}
                     </div>
-                    <CardDescription className='mt-1 text-white/60'>Create a new image from a text prompt.</CardDescription>
+                    <CardDescription className='mt-1 text-white/60'>
+                        Create a new image from a text prompt.
+                    </CardDescription>
                 </div>
                 <ModeToggle currentMode={currentMode} onModeChange={onModeChange} />
             </CardHeader>
-            <form onSubmit={handleSubmit} className='flex h-full flex-1 flex-col overflow-hidden'>
-                <CardContent className='flex-1 space-y-5 overflow-y-auto p-4'>
-                    {/* Model section hidden by request
-                    <div className='space-y-1'>
-                        <Label className='text-white'>Model</Label>
-                        <p className='text-xs text-white/60'>Using gpt-image-1.5 for now.</p>
-                        {/**
-                         * Model selector hidden by request; keep for potential future use.
-                        <div className='flex items-center gap-4'>
-                            <Select value={model} onValueChange={(value) => setModel(value as GenerationFormData['model'])} disabled={isLoading}>
-                                <SelectTrigger
-                                    id='model-select'
-                                    className='w-[180px] rounded-md border border-white/20 bg-black text-white focus:border-white/50 focus:ring-white/50'>
-                                    <SelectValue placeholder='Select model' />
-                                </SelectTrigger>
-                                <SelectContent className='border-white/20 bg-black text-white'>
-                                    <SelectItem value='gpt-image-1' className='focus:bg-white/10'>
-                                        gpt-image-1
-                                    </SelectItem>
-                                    <SelectItem value='gpt-image-1-mini' className='focus:bg-white/10'>
-                                        gpt-image-1-mini
-                                    </SelectItem>
-                                    <SelectItem value='gpt-image-1.5' className='focus:bg-white/10'>
-                                        gpt-image-1.5
-                                    </SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-                         * /}
-                    </div>
-                    */}
-
+            <form onSubmit={handleSubmit} className='flex flex-1 flex-col lg:h-full lg:overflow-hidden'>
+                <CardContent className='flex-1 space-y-5 p-4 lg:overflow-y-auto'>
                     {/* Streaming Previews section hidden by request
                     <div className='space-y-2'>
                         <div className='flex items-center gap-2'>
@@ -258,7 +227,11 @@ export function GenerationForm({
                                             onClick={handleCopyPrompt}
                                             disabled={!prompt.trim()}
                                             className='h-8 w-8 rounded-full border border-white/15 bg-white/5 p-0 text-white/80 hover:bg-white/15 hover:text-white'>
-                                            {isCopied ? <Check className='h-4 w-4 text-green-400' /> : <Copy className='h-4 w-4' />}
+                                            {isCopied ? (
+                                                <Check className='h-4 w-4 text-green-400' />
+                                            ) : (
+                                                <Copy className='h-4 w-4' />
+                                            )}
                                             <span className='sr-only'>Copy prompt</span>
                                         </Button>
                                     </TooltipTrigger>
@@ -349,13 +322,48 @@ export function GenerationForm({
                             <div className='flex items-center gap-2'>
                                 <Settings2 className='h-4 w-4' />
                                 Advanced Settings
+                                <span className='hidden rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] font-normal text-white/60 sm:inline-flex'>
+                                    {model}
+                                </span>
                             </div>
-                            {isAdvancedOpen ? <ChevronDown className='h-4 w-4' /> : <ChevronRight className='h-4 w-4' />}
+                            {isAdvancedOpen ? (
+                                <ChevronDown className='h-4 w-4' />
+                            ) : (
+                                <ChevronRight className='h-4 w-4' />
+                            )}
                         </Button>
                     </div>
 
                     {isAdvancedOpen && (
-                        <div className='space-y-5 rounded-md border border-white/10 bg-black/20 p-4 animate-in fade-in slide-in-from-top-2 duration-200'>
+                        <div className='animate-in fade-in slide-in-from-top-2 space-y-5 rounded-md border border-white/10 bg-black/20 p-4 duration-200'>
+                            <div className='space-y-2'>
+                                <div className='flex items-center justify-between gap-3'>
+                                    <Label htmlFor='model-select' className='text-white'>
+                                        Model
+                                    </Label>
+                                    <span className='text-xs text-white/50'>
+                                        Used for generation and cost tracking.
+                                    </span>
+                                </div>
+                                <Select
+                                    value={model}
+                                    onValueChange={(value) => setModel(value as GenerationFormData['model'])}
+                                    disabled={isLoading}>
+                                    <SelectTrigger
+                                        id='model-select'
+                                        className='w-full rounded-md border border-white/20 bg-black text-white focus:border-white/50 focus:ring-white/50'>
+                                        <SelectValue placeholder='Select model' />
+                                    </SelectTrigger>
+                                    <SelectContent className='border-white/20 bg-black text-white'>
+                                        {GPT_IMAGE_MODELS.map((modelName) => (
+                                            <SelectItem key={modelName} value={modelName} className='focus:bg-white/10'>
+                                                {modelName}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
                             <div className='space-y-3'>
                                 <Label className='block text-white'>Quality</Label>
                                 <RadioGroup
@@ -365,7 +373,12 @@ export function GenerationForm({
                                     className='flex flex-wrap gap-x-5 gap-y-3'>
                                     <RadioItemWithIcon value='auto' id='quality-auto' label='Auto' Icon={Sparkles} />
                                     <RadioItemWithIcon value='low' id='quality-low' label='Low' Icon={Tally1} />
-                                    <RadioItemWithIcon value='medium' id='quality-medium' label='Medium' Icon={Tally2} />
+                                    <RadioItemWithIcon
+                                        value='medium'
+                                        id='quality-medium'
+                                        label='Medium'
+                                        Icon={Tally2}
+                                    />
                                     <RadioItemWithIcon value='high' id='quality-high' label='High' Icon={Tally3} />
                                 </RadioGroup>
                             </div>
@@ -392,7 +405,9 @@ export function GenerationForm({
                                 <Label className='block text-white'>Output Format</Label>
                                 <RadioGroup
                                     value={outputFormat}
-                                    onValueChange={(value) => setOutputFormat(value as GenerationFormData['output_format'])}
+                                    onValueChange={(value) =>
+                                        setOutputFormat(value as GenerationFormData['output_format'])
+                                    }
                                     disabled={isLoading}
                                     className='flex flex-wrap gap-x-5 gap-y-3'>
                                     <RadioItemWithIcon value='png' id='format-png' label='PNG' Icon={FileImage} />

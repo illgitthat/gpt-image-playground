@@ -6,9 +6,11 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
 import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { GPT_IMAGE_MODELS, type GptImageModel } from '@/lib/cost-utils';
 import {
     Upload,
     Eraser,
@@ -26,9 +28,11 @@ import {
     UploadCloud,
     Lock,
     LockOpen,
-    HelpCircle,
     ClipboardPaste,
-    Link2
+    Link2,
+    ChevronDown,
+    ChevronRight,
+    Settings2
 } from 'lucide-react';
 import Image from 'next/image';
 import * as React from 'react';
@@ -46,7 +50,7 @@ export type EditingFormData = {
     quality: 'low' | 'medium' | 'high' | 'auto';
     imageFiles: File[];
     maskFile: File | null;
-    model: 'gpt-image-1' | 'gpt-image-1-mini' | 'gpt-image-1.5';
+    model: GptImageModel;
 };
 
 type EditingFormProps = {
@@ -162,11 +166,8 @@ export function EditingForm({
     const [imageUrl, setImageUrl] = React.useState('');
     const [isFetchingImage, setIsFetchingImage] = React.useState(false);
     const [isPastingImage, setIsPastingImage] = React.useState(false);
+    const [isAdvancedOpen, setIsAdvancedOpen] = React.useState(false);
     const [imageAddError, setImageAddError] = React.useState<string | null>(null);
-
-    React.useEffect(() => {
-        setEditModel('gpt-image-1.5');
-    }, [setEditModel]);
 
     const canvasRef = React.useRef<HTMLCanvasElement>(null);
     const visualFeedbackCanvasRef = React.useRef<HTMLCanvasElement | null>(null);
@@ -475,7 +476,8 @@ export function EditingForm({
 
             const extensionFromType = blob.type.split('/')[1] || 'png';
             const urlPathname = parsedUrl.pathname.split('/').pop();
-            const inferredName = urlPathname && urlPathname.includes('.') ? urlPathname : `fetched-image.${extensionFromType}`;
+            const inferredName =
+                urlPathname && urlPathname.includes('.') ? urlPathname : `fetched-image.${extensionFromType}`;
             const file = new File([blob], inferredName, { type: blob.type });
 
             addImageFilesToForm([file]);
@@ -577,7 +579,7 @@ export function EditingForm({
     };
 
     return (
-        <Card className='flex h-full w-full flex-col overflow-hidden rounded-lg border border-white/10 bg-black'>
+        <Card className='flex w-full flex-col rounded-lg border border-white/10 bg-black lg:h-full lg:overflow-hidden'>
             <CardHeader className='flex items-start justify-between border-b border-white/10 pb-4'>
                 <div>
                     <div className='flex items-center'>
@@ -593,42 +595,14 @@ export function EditingForm({
                             </Button>
                         )}
                     </div>
-                    <CardDescription className='mt-1 text-white/60'>Modify an existing image with a text prompt.</CardDescription>
+                    <CardDescription className='mt-1 text-white/60'>
+                        Modify an existing image with a text prompt.
+                    </CardDescription>
                 </div>
                 <ModeToggle currentMode={currentMode} onModeChange={onModeChange} />
             </CardHeader>
-            <form onSubmit={handleSubmit} className='flex h-full flex-1 flex-col overflow-hidden'>
-                <CardContent className='flex-1 space-y-5 overflow-y-auto p-4'>
-                    {/* Model section hidden by request
-                    <div className='space-y-1'>
-                        <Label className='text-white'>Model</Label>
-                        <p className='text-xs text-white/60'>Using gpt-image-1.5 for now.</p>
-                        {/**
-                         * Model selector hidden by request; keep for potential future use.
-                        <div className='flex items-center gap-4'>
-                            <Select value={editModel} onValueChange={(value) => setEditModel(value as EditingFormData['model'])} disabled={isLoading}>
-                                <SelectTrigger
-                                    id='edit-model-select'
-                                    className='w-[180px] rounded-md border border-white/20 bg-black text-white focus:border-white/50 focus:ring-white/50'>
-                                    <SelectValue placeholder='Select model' />
-                                </SelectTrigger>
-                                <SelectContent className='border-white/20 bg-black text-white'>
-                                    <SelectItem value='gpt-image-1' className='focus:bg-white/10'>
-                                        gpt-image-1
-                                    </SelectItem>
-                                    <SelectItem value='gpt-image-1-mini' className='focus:bg-white/10'>
-                                        gpt-image-1-mini
-                                    </SelectItem>
-                                    <SelectItem value='gpt-image-1.5' className='focus:bg-white/10'>
-                                        gpt-image-1.5
-                                    </SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-                         * /}
-                    </div>
-                    */}
-
+            <form onSubmit={handleSubmit} className='flex flex-1 flex-col lg:h-full lg:overflow-hidden'>
+                <CardContent className='flex-1 space-y-5 p-4 lg:overflow-y-auto'>
                     {/* Streaming Previews section hidden by request
                     <div className='space-y-2'>
                         <div className='flex items-center gap-2'>
@@ -951,35 +925,96 @@ export function EditingForm({
                         </RadioGroup>
                     </div>
 
-                    <div className='space-y-3'>
-                        <Label className='block text-white'>Quality</Label>
-                        <RadioGroup
-                            value={editQuality}
-                            onValueChange={(value) => setEditQuality(value as EditingFormData['quality'])}
-                            disabled={isLoading}
-                            className='flex flex-wrap gap-x-5 gap-y-3'>
-                            <RadioItemWithIcon value='auto' id='edit-quality-auto' label='Auto' Icon={Sparkles} />
-                            <RadioItemWithIcon value='low' id='edit-quality-low' label='Low' Icon={Tally1} />
-                            <RadioItemWithIcon value='medium' id='edit-quality-medium' label='Medium' Icon={Tally2} />
-                            <RadioItemWithIcon value='high' id='edit-quality-high' label='High' Icon={Tally3} />
-                        </RadioGroup>
+                    <div className='pt-2'>
+                        <Button
+                            type='button'
+                            variant='ghost'
+                            onClick={() => setIsAdvancedOpen(!isAdvancedOpen)}
+                            className='flex w-full items-center justify-between rounded-md border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white hover:bg-white/10'>
+                            <div className='flex items-center gap-2'>
+                                <Settings2 className='h-4 w-4' />
+                                Advanced Settings
+                                <span className='hidden rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] font-normal text-white/60 sm:inline-flex'>
+                                    {editModel}
+                                </span>
+                            </div>
+                            {isAdvancedOpen ? (
+                                <ChevronDown className='h-4 w-4' />
+                            ) : (
+                                <ChevronRight className='h-4 w-4' />
+                            )}
+                        </Button>
                     </div>
 
-                    <div className='space-y-2'>
-                        <Label htmlFor='edit-n-slider' className='text-white'>
-                            Number of Images: {editN[0]}
-                        </Label>
-                        <Slider
-                            id='edit-n-slider'
-                            min={1}
-                            max={10}
-                            step={1}
-                            value={editN}
-                            onValueChange={setEditN}
-                            disabled={isLoading}
-                            className='mt-3 [&>button]:border-black [&>button]:bg-white [&>button]:ring-offset-black [&>span:first-child]:h-1 [&>span:first-child>span]:bg-white'
-                        />
-                    </div>
+                    {isAdvancedOpen && (
+                        <div className='animate-in fade-in slide-in-from-top-2 space-y-5 rounded-md border border-white/10 bg-black/20 p-4 duration-200'>
+                            <div className='space-y-2'>
+                                <div className='flex items-center justify-between gap-3'>
+                                    <Label htmlFor='edit-model-select' className='text-white'>
+                                        Model
+                                    </Label>
+                                    <span className='text-xs text-white/50'>Used for edits and cost tracking.</span>
+                                </div>
+                                <Select
+                                    value={editModel}
+                                    onValueChange={(value) => setEditModel(value as EditingFormData['model'])}
+                                    disabled={isLoading}>
+                                    <SelectTrigger
+                                        id='edit-model-select'
+                                        className='w-full rounded-md border border-white/20 bg-black text-white focus:border-white/50 focus:ring-white/50'>
+                                        <SelectValue placeholder='Select model' />
+                                    </SelectTrigger>
+                                    <SelectContent className='border-white/20 bg-black text-white'>
+                                        {GPT_IMAGE_MODELS.map((modelName) => (
+                                            <SelectItem key={modelName} value={modelName} className='focus:bg-white/10'>
+                                                {modelName}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            <div className='space-y-3'>
+                                <Label className='block text-white'>Quality</Label>
+                                <RadioGroup
+                                    value={editQuality}
+                                    onValueChange={(value) => setEditQuality(value as EditingFormData['quality'])}
+                                    disabled={isLoading}
+                                    className='flex flex-wrap gap-x-5 gap-y-3'>
+                                    <RadioItemWithIcon
+                                        value='auto'
+                                        id='edit-quality-auto'
+                                        label='Auto'
+                                        Icon={Sparkles}
+                                    />
+                                    <RadioItemWithIcon value='low' id='edit-quality-low' label='Low' Icon={Tally1} />
+                                    <RadioItemWithIcon
+                                        value='medium'
+                                        id='edit-quality-medium'
+                                        label='Medium'
+                                        Icon={Tally2}
+                                    />
+                                    <RadioItemWithIcon value='high' id='edit-quality-high' label='High' Icon={Tally3} />
+                                </RadioGroup>
+                            </div>
+
+                            <div className='space-y-2'>
+                                <Label htmlFor='edit-n-slider' className='text-white'>
+                                    Number of Images: {editN[0]}
+                                </Label>
+                                <Slider
+                                    id='edit-n-slider'
+                                    min={1}
+                                    max={10}
+                                    step={1}
+                                    value={editN}
+                                    onValueChange={setEditN}
+                                    disabled={isLoading}
+                                    className='mt-3 [&>button]:border-black [&>button]:bg-white [&>button]:ring-offset-black [&>span:first-child]:h-1 [&>span:first-child>span]:bg-white'
+                                />
+                            </div>
+                        </div>
+                    )}
                 </CardContent>
                 <CardFooter className='border-t border-white/10 p-4'>
                     <Button

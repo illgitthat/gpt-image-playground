@@ -7,6 +7,7 @@ import Image from 'next/image';
 import {
     Dialog,
     DialogContent,
+    DialogDescription,
     DialogTrigger,
     DialogTitle,
 } from '@/components/ui/dialog';
@@ -35,6 +36,8 @@ const getGridColsClass = (count: number): string => {
     if (count <= 9) return 'grid-cols-3';
     return 'grid-cols-3';
 };
+
+const responsiveContainImageStyle = { width: 'auto', height: 'auto' } as const;
 
 export function ImageOutput({
     imageBatch,
@@ -106,7 +109,8 @@ export function ImageOutput({
                                         alt='Streaming preview'
                                         width={512}
                                         height={512}
-                                        className='max-h-full max-w-full object-contain'
+                                        className='h-auto w-auto max-h-full max-w-full object-contain'
+                                        style={responsiveContainImageStyle}
                                         unoptimized
                                     />
                                 );
@@ -168,7 +172,8 @@ export function ImageOutput({
                                         alt={altText}
                                         width={512}
                                         height={512}
-                                        className='max-h-full max-w-full object-contain'
+                                        className='h-auto w-auto max-h-full max-w-full object-contain'
+                                        style={responsiveContainImageStyle}
                                         unoptimized
                                     />
                                     <div className='absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity bg-black/50 rounded p-1 text-white backdrop-blur-sm'>
@@ -178,13 +183,17 @@ export function ImageOutput({
                             </DialogTrigger>
                             <DialogContent className='max-w-[95vw] max-h-[95vh] w-auto h-auto p-0 border-none bg-transparent shadow-none flex items-center justify-center outline-none sm:max-w-[95vw] [&>button]:bg-black/50 [&>button]:text-white [&>button]:hover:bg-black/70 [&>button]:top-4 [&>button]:right-4 [&>button]:h-10 [&>button]:w-10 [&>button]:flex [&>button]:items-center [&>button]:justify-center [&>button]:rounded-full'>
                                 <DialogTitle className='sr-only'>Full resolution view</DialogTitle>
+                                <DialogDescription className='sr-only'>
+                                    A full-size preview of the selected generated image.
+                                </DialogDescription>
                                 <div className='relative flex items-center justify-center w-full h-full'>
                                     <Image
                                         src={imageBatch[viewMode].path}
                                         alt={altText}
                                         width={2048}
                                         height={2048}
-                                        className='max-w-[90vw] max-h-[90vh] object-contain'
+                                        className='h-auto w-auto max-w-[90vw] max-h-[90vh] object-contain'
+                                        style={responsiveContainImageStyle}
                                         unoptimized
                                     />
                                 </div>

@@ -296,7 +296,7 @@ export function VideoForm({
                                     <p>Reference: {referenceDims ? `${referenceDims.width}×${referenceDims.height}` : 'Loading…'}</p>
                                     {referenceDims && (referenceDims.width !== targetSize.width || referenceDims.height !== targetSize.height) ? (
                                         <div className='space-y-1 rounded-md border border-white/10 bg-black/40 p-2'>
-                                            <p className='text-[11px] text-amber-200'>We'll auto center-crop/resize to {size} for Sora.</p>
+                                            <p className='text-[11px] text-amber-200'>We&apos;ll auto center-crop/resize to {size} for Sora.</p>
                                             {size !== recommendedSize && (
                                                 <Button
                                                     type='button'

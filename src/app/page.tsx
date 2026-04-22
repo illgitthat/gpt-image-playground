@@ -5,10 +5,16 @@ import { GenerationForm, type GenerationFormData } from '@/components/generation
 import { HistoryPanel } from '@/components/history-panel';
 import { ImageOutput } from '@/components/image-output';
 import { PasswordDialog } from '@/components/password-dialog';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { VideoForm, type VideoFormData } from '@/components/video-form';
 import { VideoOutput } from '@/components/video-output';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { calculateApiCost, calculateSoraVideoCost, type CostDetails } from '@/lib/cost-utils';
+import {
+    DEFAULT_GPT_IMAGE_MODEL,
+    calculateApiCost,
+    calculateSoraVideoCost,
+    type CostDetails,
+    type GptImageModel
+} from '@/lib/cost-utils';
 import { db, type ImageRecord } from '@/lib/db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import * as React from 'react';
@@ -34,7 +40,7 @@ export type HistoryMetadata = {
     mode: 'generate' | 'edit' | 'video';
     costDetails: CostDetails | null;
     output_format?: GenerationFormData['output_format'];
-    model?: 'gpt-image-1' | 'gpt-image-1-mini' | 'gpt-image-1.5';
+    model?: GptImageModel | 'sora-2';
     videoSize?: '1280x720' | '720x1280';
     videoSeconds?: number;
 };
@@ -116,7 +122,7 @@ export default function HomePage() {
     const [editDrawnPoints, setEditDrawnPoints] = React.useState<DrawnPoint[]>([]);
     const [editMaskPreviewUrl, setEditMaskPreviewUrl] = React.useState<string | null>(null);
 
-    const [genModel, setGenModel] = React.useState<GenerationFormData['model']>('gpt-image-1.5');
+    const [genModel, setGenModel] = React.useState<GenerationFormData['model']>(DEFAULT_GPT_IMAGE_MODEL);
     const [genPrompt, setGenPrompt] = React.useState('');
     const [genN, setGenN] = React.useState([1]);
     const [genSize, setGenSize] = React.useState<GenerationFormData['size']>('auto');
@@ -126,7 +132,7 @@ export default function HomePage() {
     const [genBackground, setGenBackground] = React.useState<GenerationFormData['background']>('auto');
     const [genModeration, setGenModeration] = React.useState<GenerationFormData['moderation']>('auto');
 
-    const [editModel, setEditModel] = React.useState<EditingFormData['model']>('gpt-image-1.5');
+    const [editModel, setEditModel] = React.useState<EditingFormData['model']>(DEFAULT_GPT_IMAGE_MODEL);
 
     const [videoPrompt, setVideoPrompt] = React.useState('');
     const [videoSize, setVideoSize] = React.useState<'1280x720' | '720x1280'>('1280x720');
@@ -384,14 +390,14 @@ export default function HomePage() {
         const setLoading = isGenerate
             ? setIsEnhancingGenPrompt
             : isEdit
-                ? setIsEnhancingEditPrompt
-                : setIsEnhancingVideoPrompt;
+              ? setIsEnhancingEditPrompt
+              : setIsEnhancingVideoPrompt;
         const setPrompt = isGenerate ? setGenPrompt : isEdit ? setEditPrompt : setVideoPrompt;
         const setEnhanceError = isGenerate
             ? setGenPromptEnhanceError
             : isEdit
-                ? setEditPromptEnhanceError
-                : setVideoPromptEnhanceError;
+              ? setEditPromptEnhanceError
+              : setVideoPromptEnhanceError;
 
         if (!targetPrompt.trim()) {
             setEnhanceError('Add a prompt first.');
@@ -548,7 +554,8 @@ export default function HomePage() {
                     setIsPasswordDialogOpen(true);
                     return;
                 }
-                const fallback = (result && result.error) || rawText || `Video API request failed with status ${response.status}`;
+                const fallback =
+                    (result && result.error) || rawText || `Video API request failed with status ${response.status}`;
                 throw new Error(typeof fallback === 'string' ? fallback : 'Video API request failed.');
             }
 
@@ -590,7 +597,9 @@ export default function HomePage() {
                             const videoCostDetails = calculateSoraVideoCost(formData.seconds);
                             const newHistoryEntry: HistoryMetadata = {
                                 timestamp: batchTimestamp,
-                                videos: statusJson.videos.map((vid: { filename: string }) => ({ filename: vid.filename })),
+                                videos: statusJson.videos.map((vid: { filename: string }) => ({
+                                    filename: vid.filename
+                                })),
                                 storageModeUsed: 'fs',
                                 durationMs,
                                 quality: 'auto',
@@ -643,7 +652,8 @@ export default function HomePage() {
                         videoTimerRef.current = null;
                     }
 
-                    const errorMessage = err instanceof Error ? err.message : 'An unexpected error occurred while polling video status.';
+                    const errorMessage =
+                        err instanceof Error ? err.message : 'An unexpected error occurred while polling video status.';
                     setError(errorMessage);
                     setLatestVideoBatch(null);
                     setIsGeneratingVideo(false);
@@ -656,7 +666,8 @@ export default function HomePage() {
                 clearInterval(videoTimerRef.current);
                 videoTimerRef.current = null;
             }
-            const errorMessage = err instanceof Error ? err.message : 'An unexpected error occurred while creating video.';
+            const errorMessage =
+                err instanceof Error ? err.message : 'An unexpected error occurred while creating video.';
             setError(errorMessage);
             setLatestVideoBatch(null);
             setIsGeneratingVideo(false);
@@ -693,32 +704,33 @@ export default function HomePage() {
 
         if (mode === 'generate') {
             const genData = formData as GenerationFormData;
-            apiFormData.append('model', genModel);
-            apiFormData.append('prompt', genPrompt);
-            apiFormData.append('n', genN[0].toString());
-            apiFormData.append('size', genSize);
-            apiFormData.append('quality', genQuality);
-            apiFormData.append('output_format', genOutputFormat);
+            apiFormData.append('model', genData.model);
+            apiFormData.append('prompt', genData.prompt);
+            apiFormData.append('n', genData.n.toString());
+            apiFormData.append('size', genData.size);
+            apiFormData.append('quality', genData.quality);
+            apiFormData.append('output_format', genData.output_format);
             if (
-                (genOutputFormat === 'jpeg' || genOutputFormat === 'webp') &&
+                (genData.output_format === 'jpeg' || genData.output_format === 'webp') &&
                 genData.output_compression !== undefined
             ) {
                 apiFormData.append('output_compression', genData.output_compression.toString());
             }
-            apiFormData.append('background', genBackground);
-            apiFormData.append('moderation', genModeration);
+            apiFormData.append('background', genData.background);
+            apiFormData.append('moderation', genData.moderation);
         } else {
-            apiFormData.append('model', editModel);
-            apiFormData.append('prompt', editPrompt);
-            apiFormData.append('n', editN[0].toString());
-            apiFormData.append('size', editSize);
-            apiFormData.append('quality', editQuality);
+            const editData = formData as EditingFormData;
+            apiFormData.append('model', editData.model);
+            apiFormData.append('prompt', editData.prompt);
+            apiFormData.append('n', editData.n.toString());
+            apiFormData.append('size', editData.size);
+            apiFormData.append('quality', editData.quality);
 
-            editImageFiles.forEach((file, index) => {
+            editData.imageFiles.forEach((file, index) => {
                 apiFormData.append(`image_${index}`, file, file.name);
             });
-            if (editGeneratedMaskFile) {
-                apiFormData.append('mask', editGeneratedMaskFile, editGeneratedMaskFile.name);
+            if (editData.maskFile) {
+                apiFormData.append('mask', editData.maskFile, editData.maskFile.name);
             }
         }
 
@@ -787,20 +799,22 @@ export default function HomePage() {
                                         let historyPrompt: string = '';
 
                                         if (mode === 'generate') {
-                                            historyQuality = genQuality;
-                                            historyBackground = genBackground;
-                                            historyModeration = genModeration;
-                                            historyOutputFormat = genOutputFormat;
-                                            historyPrompt = genPrompt;
+                                            const genData = formData as GenerationFormData;
+                                            historyQuality = genData.quality;
+                                            historyBackground = genData.background;
+                                            historyModeration = genData.moderation;
+                                            historyOutputFormat = genData.output_format;
+                                            historyPrompt = genData.prompt;
                                         } else {
-                                            historyQuality = editQuality;
+                                            const editData = formData as EditingFormData;
+                                            historyQuality = editData.quality;
                                             historyBackground = 'auto';
                                             historyModeration = 'auto';
                                             historyOutputFormat = 'png';
-                                            historyPrompt = editPrompt;
+                                            historyPrompt = editData.prompt;
                                         }
 
-                                        const currentModel = mode === 'generate' ? genModel : editModel;
+                                        const currentModel = formData.model;
                                         const costDetails = calculateApiCost(event.usage, currentModel);
 
                                         const batchTimestamp = Date.now();
@@ -821,52 +835,60 @@ export default function HomePage() {
                                             model: currentModel
                                         };
 
-                                        let newImageBatchPromises: Promise<{ path: string; filename: string } | null>[] =
-                                            [];
+                                        let newImageBatchPromises: Promise<{
+                                            path: string;
+                                            filename: string;
+                                        } | null>[] = [];
                                         if (effectiveStorageModeClient === 'indexeddb') {
                                             console.log('Processing streaming images for IndexedDB storage...');
-                                            newImageBatchPromises = event.images.map(async (img: ApiImageResponseItem) => {
-                                                if (img.b64_json) {
-                                                    try {
-                                                        const byteCharacters = atob(img.b64_json);
-                                                        const byteNumbers = new Array(byteCharacters.length);
-                                                        for (let i = 0; i < byteCharacters.length; i++) {
-                                                            byteNumbers[i] = byteCharacters.charCodeAt(i);
+                                            newImageBatchPromises = event.images.map(
+                                                async (img: ApiImageResponseItem) => {
+                                                    if (img.b64_json) {
+                                                        try {
+                                                            const byteCharacters = atob(img.b64_json);
+                                                            const byteNumbers = new Array(byteCharacters.length);
+                                                            for (let i = 0; i < byteCharacters.length; i++) {
+                                                                byteNumbers[i] = byteCharacters.charCodeAt(i);
+                                                            }
+                                                            const byteArray = new Uint8Array(byteNumbers);
+
+                                                            const actualMimeType = getMimeTypeFromFormat(
+                                                                img.output_format
+                                                            );
+                                                            const blob = new Blob([byteArray], {
+                                                                type: actualMimeType
+                                                            });
+
+                                                            await db.images.put({ filename: img.filename, blob });
+                                                            console.log(
+                                                                `Saved ${img.filename} to IndexedDB with type ${actualMimeType}.`
+                                                            );
+
+                                                            const blobUrl = URL.createObjectURL(blob);
+                                                            setBlobUrlCache((prev) => ({
+                                                                ...prev,
+                                                                [img.filename]: blobUrl
+                                                            }));
+
+                                                            return { filename: img.filename, path: blobUrl };
+                                                        } catch (dbError) {
+                                                            console.error(
+                                                                `Error saving blob ${img.filename} to IndexedDB:`,
+                                                                dbError
+                                                            );
+                                                            setError(
+                                                                `Failed to save image ${img.filename} to local database.`
+                                                            );
+                                                            return null;
                                                         }
-                                                        const byteArray = new Uint8Array(byteNumbers);
-
-                                                        const actualMimeType = getMimeTypeFromFormat(img.output_format);
-                                                        const blob = new Blob([byteArray], { type: actualMimeType });
-
-                                                        await db.images.put({ filename: img.filename, blob });
-                                                        console.log(
-                                                            `Saved ${img.filename} to IndexedDB with type ${actualMimeType}.`
-                                                        );
-
-                                                        const blobUrl = URL.createObjectURL(blob);
-                                                        setBlobUrlCache((prev) => ({
-                                                            ...prev,
-                                                            [img.filename]: blobUrl
-                                                        }));
-
-                                                        return { filename: img.filename, path: blobUrl };
-                                                    } catch (dbError) {
-                                                        console.error(
-                                                            `Error saving blob ${img.filename} to IndexedDB:`,
-                                                            dbError
-                                                        );
-                                                        setError(
-                                                            `Failed to save image ${img.filename} to local database.`
+                                                    } else {
+                                                        console.warn(
+                                                            `Image ${img.filename} missing b64_json in indexeddb mode.`
                                                         );
                                                         return null;
                                                     }
-                                                } else {
-                                                    console.warn(
-                                                        `Image ${img.filename} missing b64_json in indexeddb mode.`
-                                                    );
-                                                    return null;
                                                 }
-                                            });
+                                            );
                                         } else {
                                             newImageBatchPromises = event.images
                                                 .filter((img: ApiImageResponseItem) => !!img.path)
@@ -930,20 +952,22 @@ export default function HomePage() {
                 let historyPrompt: string = '';
 
                 if (mode === 'generate') {
-                    historyQuality = genQuality;
-                    historyBackground = genBackground;
-                    historyModeration = genModeration;
-                    historyOutputFormat = genOutputFormat;
-                    historyPrompt = genPrompt;
+                    const genData = formData as GenerationFormData;
+                    historyQuality = genData.quality;
+                    historyBackground = genData.background;
+                    historyModeration = genData.moderation;
+                    historyOutputFormat = genData.output_format;
+                    historyPrompt = genData.prompt;
                 } else {
-                    historyQuality = editQuality;
+                    const editData = formData as EditingFormData;
+                    historyQuality = editData.quality;
                     historyBackground = 'auto';
                     historyModeration = 'auto';
                     historyOutputFormat = 'png';
-                    historyPrompt = editPrompt;
+                    historyPrompt = editData.prompt;
                 }
 
-                const currentModel = mode === 'generate' ? genModel : editModel;
+                const currentModel = formData.model;
                 const costDetails = calculateApiCost(result.usage, currentModel);
 
                 const batchTimestamp = Date.now();
@@ -1334,7 +1358,7 @@ export default function HomePage() {
             />
             <div className='w-full max-w-7xl space-y-6'>
                 <div className='grid grid-cols-1 gap-6 lg:grid-cols-2'>
-                    <div className='relative flex h-[70vh] min-h-[600px] flex-col lg:col-span-1'>
+                    <div className='relative flex flex-col lg:col-span-1 lg:h-[70vh] lg:min-h-[600px]'>
                         <div className={mode === 'generate' ? 'block h-full w-full' : 'hidden'}>
                             <GenerationForm
                                 onSubmit={handleApiCall}
@@ -1439,7 +1463,7 @@ export default function HomePage() {
                         </div>
                         */}
                     </div>
-                    <div className='flex h-[70vh] min-h-[600px] flex-col lg:col-span-1'>
+                    <div className='flex min-h-[360px] flex-col lg:col-span-1 lg:h-[70vh] lg:min-h-[600px]'>
                         {error && (
                             <Alert variant='destructive' className='mb-4 border-red-500/50 bg-red-900/20 text-red-300'>
                                 <AlertTitle className='text-red-200'>Error</AlertTitle>
@@ -1457,18 +1481,18 @@ export default function HomePage() {
                             />
                         ) : (
                         */}
-                                <ImageOutput
-                                    imageBatch={latestImageBatch}
-                                    viewMode={imageOutputView}
-                                    onViewChange={setImageOutputView}
-                                    altText='Generated image output'
-                                    isLoading={isLoading || isSendingToEdit}
-                                    onSendToEdit={handleSendToEdit}
-                                    currentMode={mode}
-                                    baseImagePreviewUrl={editSourceImagePreviewUrls[0] || null}
-                                    streamingPreviewImages={streamingPreviewImages}
-                                    // onSendToVideo={handleSendToVideo} // Disabled - video feature temporarily hidden
-                                />
+                        <ImageOutput
+                            imageBatch={latestImageBatch}
+                            viewMode={imageOutputView}
+                            onViewChange={setImageOutputView}
+                            altText='Generated image output'
+                            isLoading={isLoading || isSendingToEdit}
+                            onSendToEdit={handleSendToEdit}
+                            currentMode={mode}
+                            baseImagePreviewUrl={editSourceImagePreviewUrls[0] || null}
+                            streamingPreviewImages={streamingPreviewImages}
+                            // onSendToVideo={handleSendToVideo} // Disabled - video feature temporarily hidden
+                        />
                         {/* )} */}
                     </div>
                 </div>
