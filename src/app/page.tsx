@@ -1056,7 +1056,7 @@ export default function HomePage() {
         }
     };
 
-    const handleHistorySelect = (item: HistoryMetadata) => {
+    const handleHistorySelect = (item: HistoryMetadata, options: { skipModeChange?: boolean } = {}) => {
         console.log(
             `Selecting history item from ${new Date(item.timestamp).toISOString()}, stored via: ${item.storageModeUsed}`
         );
@@ -1097,12 +1097,12 @@ export default function HomePage() {
 
             if (isVideoEntry) {
                 setLatestVideoBatch(validAssets.length > 0 ? validAssets : null);
-                setMode('video');
+                if (!options.skipModeChange) setMode('video');
                 setVideoViewIndex(0);
             } else {
                 setLatestImageBatch(validAssets.length > 0 ? validAssets : null);
                 setImageOutputView(validAssets.length > 1 ? 'grid' : 0);
-                setMode(item.mode);
+                if (!options.skipModeChange) setMode(item.mode);
             }
         });
     };
@@ -1196,9 +1196,7 @@ export default function HomePage() {
             setEditImageFiles([newFile]);
             setEditSourceImagePreviewUrls([newPreviewUrl]);
 
-            if (mode === 'generate') {
-                setMode('edit');
-            }
+            setMode('edit');
 
             console.log(`Successfully set ${filename} in edit form.`);
         } catch (err: unknown) {
@@ -1344,7 +1342,7 @@ export default function HomePage() {
     };
 
     return (
-        <main className='flex min-h-screen flex-col items-center bg-background p-4 text-foreground md:p-8 lg:p-12'>
+        <main className='flex min-h-screen flex-col items-center bg-background px-5 py-8 text-foreground md:px-10 md:py-12 lg:px-16 lg:py-16'>
             <PasswordDialog
                 isOpen={isPasswordDialogOpen}
                 onOpenChange={setIsPasswordDialogOpen}
@@ -1356,10 +1354,18 @@ export default function HomePage() {
                         : 'Set a password to use for API requests.'
                 }
             />
-            <div className='w-full max-w-7xl space-y-6'>
-                <div className='flex items-center justify-end'>
-                    <ThemeToggle />
-                </div>
+            <div className='w-full max-w-[1400px] space-y-8'>
+                <header className='rise-in flex flex-col gap-6 border-b border-border pb-6 lg:flex-row lg:items-end lg:justify-between'>
+                    <div className='flex flex-col gap-3'>
+                        <h1 className='font-display text-5xl leading-[0.95] tracking-tight text-foreground md:text-6xl lg:text-7xl'>
+                            gpt<span className='italic text-primary'>·image</span>
+                            <span className='text-muted-foreground'>/</span>playground
+                        </h1>
+                    </div>
+                    <div className='flex items-center gap-3 text-xs'>
+                        <ThemeToggle />
+                    </div>
+                </header>
                 <div className='grid grid-cols-1 gap-6 lg:grid-cols-2'>
                     <div className='relative flex flex-col lg:col-span-1 lg:h-[70vh] lg:min-h-[600px]'>
                         <div className={mode === 'generate' ? 'block h-full w-full' : 'hidden'}>
@@ -1511,6 +1517,7 @@ export default function HomePage() {
                         deletePreferenceDialogValue={dialogCheckboxStateSkipConfirm}
                         onDeletePreferenceDialogChange={setDialogCheckboxStateSkipConfirm}
                         onReusePrompt={handleReusePrompt}
+                        onSendToEdit={handleSendToEdit}
                     />
                 </div>
             </div>

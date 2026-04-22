@@ -34,7 +34,7 @@ import * as React from 'react';
 
 type HistoryPanelProps = {
     history: HistoryMetadata[];
-    onSelectImage: (item: HistoryMetadata) => void;
+    onSelectImage: (item: HistoryMetadata, options?: { skipModeChange?: boolean }) => void;
     onClearHistory: () => void;
     getImageSrc: (filename: string) => string | undefined;
     onDeleteItemRequest: (item: HistoryMetadata) => void;
@@ -44,6 +44,7 @@ type HistoryPanelProps = {
     deletePreferenceDialogValue: boolean;
     onDeletePreferenceDialogChange: (isChecked: boolean) => void;
     onReusePrompt: (prompt: string, mode: 'generate' | 'edit' | 'video') => void;
+    onSendToEdit?: (filename: string) => void;
 };
 
 const formatDuration = (ms: number): string => {
@@ -101,7 +102,8 @@ export function HistoryPanel({
     onCancelDeletion,
     deletePreferenceDialogValue,
     onDeletePreferenceDialogChange,
-    onReusePrompt
+    onReusePrompt,
+    onSendToEdit
 }: HistoryPanelProps) {
     const [openPromptDialogTimestamp, setOpenPromptDialogTimestamp] = React.useState<number | null>(null);
     const [openCostDialogTimestamp, setOpenCostDialogTimestamp] = React.useState<number | null>(null);
@@ -135,10 +137,12 @@ export function HistoryPanel({
     };
 
     return (
-        <Card className='flex h-full w-full flex-col overflow-hidden rounded-lg border border-border bg-background'>
-            <CardHeader className='flex flex-row items-start justify-between gap-4 border-b border-border px-4 py-3'>
-                <div className='flex flex-col gap-1'>
-                    <CardTitle className='text-lg font-medium text-foreground'>History</CardTitle>
+        <Card className='flex h-full w-full flex-col overflow-hidden rounded-md border border-border bg-card shadow-[0_1px_0_0_var(--border)]'>
+            <CardHeader className='flex flex-row items-start justify-between gap-4 border-b border-border px-5 py-4'>
+                <div className='flex items-center gap-3'>
+                    <CardTitle className='font-display text-3xl font-normal leading-none tracking-tight text-foreground'>
+                        History
+                    </CardTitle>
                     {totalCost > 0 && (
                         <Dialog open={isTotalCostDialogOpen} onOpenChange={setIsTotalCostDialogOpen}>
                             <DialogTrigger asChild>
@@ -219,7 +223,7 @@ export function HistoryPanel({
                     </div>
                 ) : (
                     <div className='grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5'>
-                        {[...history].map((item) => {
+                        {[...history].map((item, itemIndex) => {
                             const mediaItems = item.videos && item.videos.length > 0 ? item.videos : item.images;
                             const firstMedia = mediaItems?.[0];
                             const mediaCount = mediaItems?.length ?? 0;
@@ -227,6 +231,7 @@ export function HistoryPanel({
                             const itemKey = item.timestamp;
                             const originalStorageMode = item.storageModeUsed || 'fs';
                             const outputFormat = item.output_format || 'png';
+                            const isAboveTheFoldThumbnail = itemIndex === 0;
 
                             const isVideo = item.mode === 'video';
 
@@ -263,6 +268,8 @@ export function HistoryPanel({
                                                         height={150}
                                                         className='h-full w-full object-cover'
                                                         unoptimized
+                                                        loading={isAboveTheFoldThumbnail ? 'eager' : undefined}
+                                                        fetchPriority={isAboveTheFoldThumbnail ? 'high' : undefined}
                                                     />
                                                 )
                                             ) : (
@@ -272,12 +279,12 @@ export function HistoryPanel({
                                             )}
                                             <div
                                                 className={cn(
-                                                    'pointer-events-none absolute top-1 left-1 z-10 flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[11px] text-foreground',
+                                                    'pointer-events-none absolute top-1 left-1 z-10 flex items-center gap-1 rounded-full px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] backdrop-blur-sm',
                                                     item.mode === 'edit'
-                                                        ? 'bg-orange-600/80'
+                                                        ? 'bg-foreground/85 text-background'
                                                         : item.mode === 'video'
-                                                          ? 'bg-purple-600/80'
-                                                          : 'bg-blue-600/80'
+                                                          ? 'bg-foreground/70 text-background'
+                                                          : 'bg-primary text-primary-foreground'
                                                 )}>
                                                 {item.mode === 'edit' ? (
                                                     <Pencil size={12} />
@@ -303,7 +310,7 @@ export function HistoryPanel({
                                                     {originalStorageMode === 'fs' ? (
                                                         <HardDrive size={12} className='text-muted-foreground' />
                                                     ) : (
-                                                        <Database size={12} className='text-blue-400' />
+                                                        <Database size={12} className='text-primary' />
                                                     )}
                                                     <span>{originalStorageMode === 'fs' ? 'file' : 'db'}</span>
                                                 </div>
@@ -315,6 +322,21 @@ export function HistoryPanel({
                                                 )}
                                             </div>
                                         </button>
+                                        {!isVideo && firstMedia && onSendToEdit && (
+                                            <button
+                                                type='button'
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    onSelectImage(item, { skipModeChange: true });
+                                                    onSendToEdit(firstMedia.filename);
+                                                }}
+                                                title='Send to Edit'
+                                                aria-label='Send to Edit'
+                                                className='absolute inset-x-0 bottom-0 z-20 flex items-center justify-center gap-1.5 border-t border-primary/40 bg-primary/90 px-2 py-1.5 font-mono text-[10px] uppercase tracking-[0.18em] text-primary-foreground opacity-0 backdrop-blur-sm transition-opacity duration-150 group-hover:opacity-100 focus:opacity-100 focus:outline-none'>
+                                                <Pencil size={11} />
+                                                Edit
+                                            </button>
+                                        )}
                                         {item.costDetails && (
                                             <Dialog
                                                 open={openCostDialogTimestamp === itemKey}

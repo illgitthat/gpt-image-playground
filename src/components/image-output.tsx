@@ -38,6 +38,7 @@ const getGridColsClass = (count: number): string => {
 };
 
 const responsiveContainImageStyle = { width: 'auto', height: 'auto' } as const;
+const eagerImageProps = { loading: 'eager' as const, fetchPriority: 'high' as const };
 
 export function ImageOutput({
     imageBatch,
@@ -91,8 +92,11 @@ export function ImageOutput({
     const canDownload = !isLoading && isSingleImageView && imageBatch && imageBatch[viewMode];
 
     return (
-        <div className='flex h-full min-h-[300px] w-full flex-col items-center justify-between gap-4 overflow-hidden rounded-lg border border-border bg-background p-4'>
-            <div className='relative flex h-full w-full flex-grow items-center justify-center overflow-hidden'>
+        <div className='relative flex h-full min-h-[300px] w-full flex-col items-center justify-between gap-4 overflow-hidden rounded-md border border-border bg-card p-5 shadow-[0_1px_0_0_var(--border)]'>
+            <div className='absolute right-5 top-4 font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground'>
+                {isLoading ? 'generating…' : imageBatch && imageBatch.length > 0 ? `${typeof viewMode === 'number' ? viewMode + 1 : '·'} / ${imageBatch.length}` : ''}
+            </div>
+            <div className='relative mt-8 flex h-full w-full flex-grow items-center justify-center overflow-hidden'>
                 {isLoading ? (
                     streamingPreviewImages && streamingPreviewImages.size > 0 ? (
                         // Show streaming preview images - single image centered like final view
@@ -159,6 +163,7 @@ export function ImageOutput({
                                         style={{ objectFit: 'contain' }}
                                         sizes='(max-width: 768px) 50vw, (max-width: 1024px) 33vw, 25vw'
                                         unoptimized
+                                        {...(index === 0 ? eagerImageProps : {})}
                                     />
                                 </button>
                             ))}
@@ -175,6 +180,7 @@ export function ImageOutput({
                                         className='h-auto w-auto max-h-full max-w-full object-contain'
                                         style={responsiveContainImageStyle}
                                         unoptimized
+                                        {...eagerImageProps}
                                     />
                                     <div className='absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity bg-background/50 rounded p-1 text-foreground backdrop-blur-sm'>
                                         <Maximize2 className='h-4 w-4' />
@@ -205,8 +211,13 @@ export function ImageOutput({
                         </div>
                     )
                 ) : (
-                    <div className='text-center text-muted-foreground/70'>
-                        <p>Your generated image will appear here.</p>
+                    <div className='flex flex-col items-center gap-3 text-center'>
+                        <div className='flex h-16 w-16 items-center justify-center rounded-full border border-dashed border-border'>
+                            <div className='h-2 w-2 rounded-full bg-primary/60' />
+                        </div>
+                        <p className='font-display text-2xl italic text-muted-foreground'>
+                            No image yet
+                        </p>
                     </div>
                 )}
             </div>

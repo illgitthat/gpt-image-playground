@@ -579,27 +579,19 @@ export function EditingForm({
     };
 
     return (
-        <Card className='flex w-full flex-col rounded-lg border border-border bg-background lg:h-full lg:overflow-hidden'>
-            <CardHeader className='flex items-start justify-between border-b border-border pb-4'>
-                <div>
-                    <div className='flex items-center'>
-                        <CardTitle className='py-1 text-lg font-medium text-foreground'>Edit Image</CardTitle>
-                        {isPasswordRequiredByBackend && (
-                            <Button
-                                variant='ghost'
-                                size='icon'
-                                onClick={onOpenPasswordDialog}
-                                className='ml-2 text-muted-foreground hover:text-foreground'
-                                aria-label='Configure Password'>
-                                {clientPasswordHash ? <Lock className='h-4 w-4' /> : <LockOpen className='h-4 w-4' />}
-                            </Button>
-                        )}
-                    </div>
-                    <CardDescription className='mt-1 text-muted-foreground'>
-                        Modify an existing image with a text prompt.
-                    </CardDescription>
-                </div>
+        <Card className='flex w-full flex-col rounded-md border border-border bg-card shadow-[0_1px_0_0_var(--border)] lg:h-full lg:overflow-hidden'>
+            <CardHeader className='flex items-center justify-between gap-4 border-b border-border px-5 pb-4 pt-5'>
                 <ModeToggle currentMode={currentMode} onModeChange={onModeChange} />
+                {isPasswordRequiredByBackend && (
+                    <Button
+                        variant='ghost'
+                        size='icon'
+                        onClick={onOpenPasswordDialog}
+                        className='h-7 w-7 text-muted-foreground hover:text-foreground'
+                        aria-label='Configure Password'>
+                        {clientPasswordHash ? <Lock className='h-3.5 w-3.5' /> : <LockOpen className='h-3.5 w-3.5' />}
+                    </Button>
+                )}
             </CardHeader>
             <form onSubmit={handleSubmit} className='flex flex-1 flex-col lg:h-full lg:overflow-hidden'>
                 <CardContent className='flex-1 space-y-5 p-4 lg:overflow-y-auto'>
@@ -660,7 +652,9 @@ export function EditingForm({
                             onChange={(e) => setEditPrompt(e.target.value)}
                             required
                             disabled={isLoading}
-                            className='min-h-[80px] rounded-md border border-border bg-background text-foreground placeholder:text-muted-foreground/70 focus:border-ring focus:ring-ring'
+                            className={`min-h-[80px] rounded-md border bg-background text-foreground placeholder:text-muted-foreground/70 focus:border-ring focus:ring-ring ${
+                                imageFiles.length > 0 && !editPrompt && !isLoading ? 'attention-pulse' : 'border-border'
+                            }`}
                         />
                     </div>
 
@@ -668,7 +662,9 @@ export function EditingForm({
                         <Label className='text-foreground'>Source Image(s) [Max: {maxImages}]</Label>
                         <Label
                             htmlFor='image-files-input'
-                            className='flex h-10 w-full cursor-pointer items-center justify-between rounded-md border border-border bg-background px-3 py-2 text-sm transition-colors hover:bg-muted/30'>
+                            className={`flex h-10 w-full cursor-pointer items-center justify-between rounded-md border bg-background px-3 py-2 text-sm transition-colors hover:bg-muted/30 ${
+                                imageFiles.length === 0 && !isLoading ? 'attention-pulse' : 'border-border'
+                            }`}>
                             <span className='truncate pr-2 text-muted-foreground'>{displayFileNames(imageFiles)}</span>
                             <span className='flex shrink-0 items-center gap-1.5 rounded-md bg-muted/60 px-3 py-1 text-xs font-medium text-foreground/90 hover:bg-muted'>
                                 <Upload className='h-3 w-3' /> Browse...
@@ -1016,13 +1012,30 @@ export function EditingForm({
                         </div>
                     )}
                 </CardContent>
-                <CardFooter className='border-t border-border p-4'>
+                <CardFooter className='border-t border-border bg-muted/20 p-4'>
                     <Button
                         type='submit'
                         disabled={isLoading || !editPrompt || imageFiles.length === 0}
-                        className='flex w-full items-center justify-center gap-2 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:bg-muted/60 disabled:text-muted-foreground/70'>
+                        title={
+                            !isLoading
+                                ? imageFiles.length === 0
+                                    ? 'Upload an image to enable'
+                                    : !editPrompt
+                                      ? 'Enter a prompt to enable'
+                                      : undefined
+                                : undefined
+                        }
+                        className='group relative flex w-full items-center justify-center gap-2 rounded-md border border-primary/60 bg-primary py-5 font-mono text-[11px] uppercase tracking-[0.22em] text-primary-foreground transition-all hover:brightness-105 hover:shadow-[0_8px_30px_-8px_oklch(0.86_0.20_125_/_0.55)] disabled:!pointer-events-auto disabled:cursor-not-allowed disabled:border-border disabled:bg-transparent disabled:text-muted-foreground disabled:opacity-100 disabled:shadow-none'>
                         {isLoading && <Loader2 className='h-4 w-4 animate-spin' />}
-                        {isLoading ? 'Editing...' : 'Edit Image'}
+                        <span>
+                            {isLoading
+                                ? 'Re-mixing…'
+                                : imageFiles.length === 0
+                                  ? 'Upload an image …'
+                                  : !editPrompt
+                                    ? 'Enter a prompt …'
+                                    : 'Edit image →'}
+                        </span>
                     </Button>
                 </CardFooter>
             </form>
