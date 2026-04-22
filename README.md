@@ -45,7 +45,7 @@ Then open [http://localhost:3000](http://localhost:3000) 🎉
 - **🎨 Image Generation Mode:** Create new images from text prompts.
 - **🖌️ Image Editing Mode:** Modify existing images based on text prompts and optional masks.
 - **🎞️ Image → Video (Sora 2):** Generate a short video from a prompt, optionally guided by a reference image, using OpenAI Sora 2.
-- **⚙️ Full API Parameter Control:** Access and adjust all relevant parameters supported by the OpenAI Images API directly through the UI (size, quality, output format, compression, background, moderation, number of images).
+- **⚙️ Full API Parameter Control:** Access and adjust relevant parameters supported by the OpenAI Images API directly through the UI (size, quality, output format, compression, background, number of images).
 - **🎭 Integrated Masking Tool:** Easily create or upload masks directly within the editing mode to specify areas for modification. Draw directly on the image to generate a mask.
 
     <p align="center">
