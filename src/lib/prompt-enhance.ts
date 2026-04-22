@@ -179,8 +179,10 @@ export function buildSurpriseMeInput(
     mode: SurpriseMeMode,
     options?: BuildSurpriseMeOptions
 ): PromptEnhanceParams {
+    const hasReferenceImages = Array.isArray(options?.referenceImages) && options?.referenceImages.length > 0;
+    const useEditSurprisePrompt = mode === 'edit' && hasReferenceImages;
     const instructions =
-        mode === 'edit' ? surpriseEditSystemPrompt : surpriseGenerateSystemPrompt;
+        useEditSurprisePrompt ? surpriseEditSystemPrompt : surpriseGenerateSystemPrompt;
 
     const themes = [
         'photorealistic photography',
@@ -196,11 +198,9 @@ export function buildSurpriseMeInput(
     ];
     const pickedTheme = themes[Math.floor(Math.random() * themes.length)];
 
-    const seed = mode === 'edit'
+    const seed = useEditSurprisePrompt
         ? `Surprise me with a fresh, unexpected edit instruction for the reference image(s). Make it concrete and grounded in what is actually shown.`
         : `Surprise me with a fresh image prompt. Try the mode: ${pickedTheme}. Pick a subject I would not expect.`;
-
-    const hasReferenceImages = Array.isArray(options?.referenceImages) && options?.referenceImages.length > 0;
 
     if (!hasReferenceImages) {
         return { instructions, input: seed };
