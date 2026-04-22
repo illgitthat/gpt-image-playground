@@ -52,7 +52,7 @@ type DrawnPoint = {
     size: number;
 };
 
-const MAX_EDIT_IMAGES = 10;
+const MAX_EDIT_IMAGES = 5;
 const MAX_PROMPT_ENHANCE_IMAGES = 3;
 
 const explicitModeClient = process.env.NEXT_PUBLIC_IMAGE_STORAGE_MODE;

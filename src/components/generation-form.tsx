@@ -307,7 +307,7 @@ export function GenerationForm({
                         <Slider
                             id='n-slider'
                             min={1}
-                            max={10}
+                            max={5}
                             step={1}
                             value={n}
                             onValueChange={setN}

@@ -417,7 +417,7 @@ export async function POST(request: NextRequest) {
         let aggregatedUsage: ApiUsage | undefined;
 
         // Generate n images (Responses API generates one at a time)
-        for (let i = 0; i < Math.min(n, 10); i++) {
+        for (let i = 0; i < Math.min(n, 5); i++) {
             const response = await apiClient.responses.create({
                 model: 'gpt-5.3-chat',
                 input: inputContent,
