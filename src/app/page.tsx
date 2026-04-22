@@ -89,6 +89,8 @@ export default function HomePage() {
     const [isLoading, setIsLoading] = React.useState(false);
     const [isEnhancingGenPrompt, setIsEnhancingGenPrompt] = React.useState(false);
     const [isEnhancingEditPrompt, setIsEnhancingEditPrompt] = React.useState(false);
+    const [isSurprisingGen, setIsSurprisingGen] = React.useState(false);
+    const [isSurprisingEdit, setIsSurprisingEdit] = React.useState(false);
     const [isSendingToEdit, setIsSendingToEdit] = React.useState(false);
     const [error, setError] = React.useState<string | null>(null);
     const [genPromptEnhanceError, setGenPromptEnhanceError] = React.useState<string | null>(null);
@@ -486,6 +488,78 @@ export default function HomePage() {
         } catch (err: unknown) {
             const message = err instanceof Error ? err.message : 'Failed to enhance prompt.';
             setEnhanceError(message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleSurpriseMe = async (targetMode: 'generate' | 'edit') => {
+        const isGenerate = targetMode === 'generate';
+        const setLoading = isGenerate ? setIsSurprisingGen : setIsSurprisingEdit;
+        const setPrompt = isGenerate ? setGenPrompt : setEditPrompt;
+        const setSurpriseError = isGenerate ? setGenPromptEnhanceError : setEditPromptEnhanceError;
+
+        if (isPasswordRequiredByBackend && !clientPasswordHash) {
+            setError('Password is required. Please configure the password by clicking the lock icon.');
+            setPasswordDialogContext('initial');
+            setIsPasswordDialogOpen(true);
+            return;
+        }
+
+        setSurpriseError(null);
+        setLoading(true);
+
+        let referenceImagesPayload: { dataUrl: string; alt?: string }[] = [];
+
+        if (targetMode === 'edit' && editImageFiles.length > 0) {
+            try {
+                const filesToSend = editImageFiles.slice(0, MAX_PROMPT_ENHANCE_IMAGES);
+                referenceImagesPayload = await Promise.all(
+                    filesToSend.map(async (file, index) => ({
+                        dataUrl: await fileToDataUrl(file),
+                        alt: `Reference image ${index + 1} for edit${file.name ? ` (${file.name})` : ''}`
+                    }))
+                );
+            } catch (readError) {
+                const message =
+                    readError instanceof Error
+                        ? readError.message
+                        : 'Failed to attach reference images for surprise prompt.';
+                setSurpriseError(message);
+                setLoading(false);
+                return;
+            }
+        }
+
+        try {
+            const response = await fetch('/api/surprise-me', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    mode: targetMode,
+                    passwordHash: isPasswordRequiredByBackend ? clientPasswordHash : undefined,
+                    referenceImages: referenceImagesPayload.length ? referenceImagesPayload : undefined
+                })
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                if (response.status === 401 && isPasswordRequiredByBackend) {
+                    setPasswordDialogContext('retry');
+                    setIsPasswordDialogOpen(true);
+                }
+                throw new Error(result.error || 'Failed to generate a surprise prompt.');
+            }
+
+            if (!result.prompt) {
+                throw new Error('No surprise prompt returned.');
+            }
+
+            setPrompt(result.prompt as string);
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : 'Failed to generate a surprise prompt.';
+            setSurpriseError(message);
         } finally {
             setLoading(false);
         }
@@ -1397,6 +1471,8 @@ export default function HomePage() {
                                 onEnhancePrompt={() => handlePromptEnhance('generate')}
                                 isEnhancingPrompt={isEnhancingGenPrompt}
                                 enhanceError={genPromptEnhanceError}
+                                onSurpriseMe={() => handleSurpriseMe('generate')}
+                                isSurprising={isSurprisingGen}
                             />
                         </div>
                         <div className={mode === 'edit' ? 'block h-full w-full' : 'hidden'}>
@@ -1441,6 +1517,8 @@ export default function HomePage() {
                                 onEnhancePrompt={() => handlePromptEnhance('edit')}
                                 isEnhancingPrompt={isEnhancingEditPrompt}
                                 enhanceError={editPromptEnhanceError}
+                                onSurpriseMe={() => handleSurpriseMe('edit')}
+                                isSurprising={isSurprisingEdit}
                             />
                         </div>
                         {/* VideoForm hidden - feature temporarily disabled

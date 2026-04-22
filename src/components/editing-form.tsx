@@ -32,7 +32,8 @@ import {
     Link2,
     ChevronDown,
     ChevronRight,
-    Settings2
+    Settings2,
+    Wand2
 } from 'lucide-react';
 import Image from 'next/image';
 import * as React from 'react';
@@ -94,6 +95,8 @@ type EditingFormProps = {
     onEnhancePrompt: () => void;
     isEnhancingPrompt: boolean;
     enhanceError: string | null;
+    onSurpriseMe: () => void;
+    isSurprising: boolean;
 };
 
 const RadioItemWithIcon = ({
@@ -160,7 +163,9 @@ export function EditingForm({
     streamingAllowed,
     onEnhancePrompt,
     isEnhancingPrompt,
-    enhanceError
+    enhanceError,
+    onSurpriseMe,
+    isSurprising
 }: EditingFormProps) {
     const [firstImagePreviewUrl, setFirstImagePreviewUrl] = React.useState<string | null>(null);
     const [imageUrl, setImageUrl] = React.useState('');
@@ -622,6 +627,27 @@ export function EditingForm({
                             </Label>
                             <div className='flex items-center gap-2'>
                                 {enhanceError && <span className='text-xs text-destructive'>{enhanceError}</span>}
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <Button
+                                            type='button'
+                                            variant='ghost'
+                                            size='sm'
+                                            onClick={onSurpriseMe}
+                                            disabled={isLoading || isSurprising || isEnhancingPrompt}
+                                            className='h-8 gap-1 rounded-full border border-border bg-muted/30 px-3 text-xs text-foreground/90 hover:bg-muted/80 hover:text-foreground'>
+                                            {isSurprising ? (
+                                                <Loader2 className='h-4 w-4 animate-spin' />
+                                            ) : (
+                                                <Wand2 className='h-4 w-4' />
+                                            )}
+                                            <span className='hidden sm:inline'>Surprise me</span>
+                                        </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent className='bg-background text-foreground'>
+                                        Generate a playful edit idea based on your source image(s).
+                                    </TooltipContent>
+                                </Tooltip>
                                 <Tooltip>
                                     <TooltipTrigger asChild>
                                         <Button
