@@ -24,8 +24,6 @@ import {
     BrickWall,
     Lock,
     LockOpen,
-    Copy,
-    Check,
     ChevronDown,
     ChevronRight,
     Settings2,
@@ -139,7 +137,6 @@ export function GenerationForm({
 }: GenerationFormProps) {
     const showCompression = outputFormat === 'jpeg' || outputFormat === 'webp';
     const locksBackgroundToAuto = model === 'gpt-image-2';
-    const [isCopied, setIsCopied] = React.useState(false);
     const [isAdvancedOpen, setIsAdvancedOpen] = React.useState(false);
 
     React.useEffect(() => {
@@ -147,17 +144,6 @@ export function GenerationForm({
             setBackground('auto');
         }
     }, [background, locksBackgroundToAuto, setBackground]);
-
-    const handleCopyPrompt = async () => {
-        if (!prompt) return;
-        try {
-            await navigator.clipboard.writeText(prompt);
-            setIsCopied(true);
-            setTimeout(() => setIsCopied(false), 2000);
-        } catch (err) {
-            console.error('Failed to copy prompt:', err);
-        }
-    };
 
     const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
         event.preventDefault();
@@ -235,32 +221,11 @@ export function GenerationForm({
                                             ) : (
                                                 <Wand2 className='h-4 w-4' />
                                             )}
-                                            <span className='hidden sm:inline'>Surprise me</span>
+                                            <span>Surprise me</span>
                                         </Button>
                                     </TooltipTrigger>
                                     <TooltipContent className='bg-background text-foreground'>
                                         Generate a fresh, unexpected image idea with GPT-5.3 Chat.
-                                    </TooltipContent>
-                                </Tooltip>
-                                <Tooltip>
-                                    <TooltipTrigger asChild>
-                                        <Button
-                                            type='button'
-                                            variant='ghost'
-                                            size='sm'
-                                            onClick={handleCopyPrompt}
-                                            disabled={!prompt.trim()}
-                                            className='h-8 w-8 rounded-full border border-border bg-muted/30 p-0 text-foreground/90 hover:bg-muted/80 hover:text-foreground'>
-                                            {isCopied ? (
-                                                <Check className='h-4 w-4 text-green-400' />
-                                            ) : (
-                                                <Copy className='h-4 w-4' />
-                                            )}
-                                            <span className='sr-only'>Copy prompt</span>
-                                        </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent className='bg-background text-foreground'>
-                                        {isCopied ? 'Copied!' : 'Copy prompt'}
                                     </TooltipContent>
                                 </Tooltip>
                                 <Tooltip>
@@ -277,7 +242,7 @@ export function GenerationForm({
                                             ) : (
                                                 <Sparkles className='h-4 w-4' />
                                             )}
-                                            <span className='hidden sm:inline'>Auto enhance</span>
+                                            <span>Auto enhance</span>
                                         </Button>
                                     </TooltipTrigger>
                                     <TooltipContent className='bg-background text-foreground'>

@@ -219,7 +219,7 @@ export function VideoForm({
                                             ) : (
                                                 <Sparkles className='h-4 w-4' />
                                             )}
-                                            <span className='hidden sm:inline'>Auto enhance</span>
+                                            <span>Auto enhance</span>
                                         </Button>
                                     </TooltipTrigger>
                                     <TooltipContent className='bg-background text-foreground'>

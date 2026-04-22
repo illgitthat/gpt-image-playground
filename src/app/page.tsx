@@ -1439,8 +1439,8 @@ export default function HomePage() {
             />
             <div className='w-full max-w-[1400px] space-y-8'>
                 <header className='rise-in flex flex-col gap-6 border-b border-border pb-6 lg:flex-row lg:items-end lg:justify-between'>
-                    <div className='flex flex-col gap-3'>
-                        <h1 className='font-display text-5xl leading-[0.95] tracking-tight text-foreground md:text-6xl lg:text-7xl'>
+                    <div className='flex min-w-0 flex-col gap-3'>
+                        <h1 className='font-display text-[clamp(1.5rem,8.2vw,1.875rem)] leading-[0.95] tracking-tight text-foreground sm:text-5xl md:text-6xl lg:text-7xl'>
                             gpt<span className='italic text-primary'>·image</span>
                             <span className='text-muted-foreground'>/</span>playground
                         </h1>

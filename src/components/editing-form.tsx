@@ -648,7 +648,7 @@ export function EditingForm({
                                             ) : (
                                                 <Wand2 className='h-4 w-4' />
                                             )}
-                                            <span className='hidden sm:inline'>Surprise me</span>
+                                            <span>Surprise me</span>
                                         </Button>
                                     </TooltipTrigger>
                                     <TooltipContent className='bg-background text-foreground'>
@@ -669,7 +669,7 @@ export function EditingForm({
                                             ) : (
                                                 <Sparkles className='h-4 w-4' />
                                             )}
-                                            <span className='hidden sm:inline'>Auto enhance</span>
+                                            <span>Auto enhance</span>
                                         </Button>
                                     </TooltipTrigger>
                                     <TooltipContent className='bg-background text-foreground'>
