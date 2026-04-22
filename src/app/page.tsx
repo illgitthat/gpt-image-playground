@@ -130,7 +130,6 @@ export default function HomePage() {
     const [genOutputFormat, setGenOutputFormat] = React.useState<GenerationFormData['output_format']>('png');
     const [genCompression, setGenCompression] = React.useState([100]);
     const [genBackground, setGenBackground] = React.useState<GenerationFormData['background']>('auto');
-    const [genModeration, setGenModeration] = React.useState<GenerationFormData['moderation']>('auto');
 
     const [editModel, setEditModel] = React.useState<EditingFormData['model']>(DEFAULT_GPT_IMAGE_MODEL);
 
@@ -604,7 +603,7 @@ export default function HomePage() {
                                 durationMs,
                                 quality: 'auto',
                                 background: 'auto',
-                                moderation: 'auto',
+                                moderation: 'low',
                                 prompt: formData.prompt,
                                 mode: 'video',
                                 costDetails: videoCostDetails,
@@ -794,7 +793,7 @@ export default function HomePage() {
                                     if (event.images && event.images.length > 0) {
                                         let historyQuality: GenerationFormData['quality'] = 'auto';
                                         let historyBackground: GenerationFormData['background'] = 'auto';
-                                        let historyModeration: GenerationFormData['moderation'] = 'auto';
+                                        let historyModeration: GenerationFormData['moderation'] = 'low';
                                         let historyOutputFormat: GenerationFormData['output_format'] = 'png';
                                         let historyPrompt: string = '';
 
@@ -802,14 +801,14 @@ export default function HomePage() {
                                             const genData = formData as GenerationFormData;
                                             historyQuality = genData.quality;
                                             historyBackground = genData.background;
-                                            historyModeration = genData.moderation;
+                                            historyModeration = 'low';
                                             historyOutputFormat = genData.output_format;
                                             historyPrompt = genData.prompt;
                                         } else {
                                             const editData = formData as EditingFormData;
                                             historyQuality = editData.quality;
                                             historyBackground = 'auto';
-                                            historyModeration = 'auto';
+                                            historyModeration = 'low';
                                             historyOutputFormat = 'png';
                                             historyPrompt = editData.prompt;
                                         }
@@ -947,7 +946,7 @@ export default function HomePage() {
 
                 let historyQuality: GenerationFormData['quality'] = 'auto';
                 let historyBackground: GenerationFormData['background'] = 'auto';
-                let historyModeration: GenerationFormData['moderation'] = 'auto';
+                let historyModeration: GenerationFormData['moderation'] = 'low';
                 let historyOutputFormat: GenerationFormData['output_format'] = 'png';
                 let historyPrompt: string = '';
 
@@ -955,14 +954,14 @@ export default function HomePage() {
                     const genData = formData as GenerationFormData;
                     historyQuality = genData.quality;
                     historyBackground = genData.background;
-                    historyModeration = genData.moderation;
+                    historyModeration = 'low';
                     historyOutputFormat = genData.output_format;
                     historyPrompt = genData.prompt;
                 } else {
                     const editData = formData as EditingFormData;
                     historyQuality = editData.quality;
                     historyBackground = 'auto';
-                    historyModeration = 'auto';
+                    historyModeration = 'low';
                     historyOutputFormat = 'png';
                     historyPrompt = editData.prompt;
                 }
@@ -1384,8 +1383,6 @@ export default function HomePage() {
                                 setCompression={setGenCompression}
                                 background={genBackground}
                                 setBackground={setGenBackground}
-                                moderation={genModeration}
-                                setModeration={setGenModeration}
                                 streamingAllowed={genN[0] === 1}
                                 onEnhancePrompt={() => handlePromptEnhance('generate')}
                                 isEnhancingPrompt={isEnhancingGenPrompt}

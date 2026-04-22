@@ -181,6 +181,7 @@ export async function POST(request: NextRequest) {
         const quality = (formData.get('quality') as 'auto' | 'low' | 'medium' | 'high') || 'auto';
         const output_format = (formData.get('output_format') as 'png' | 'jpeg' | 'webp') || 'png';
         const background = (formData.get('background') as 'auto' | 'opaque' | 'transparent') || 'auto';
+        const effectiveBackground = model === 'gpt-image-2' && background === 'transparent' ? 'auto' : background;
         const partialImages = parseInt((formData.get('partial_images') as string) || '0', 10);
         const useStreaming = partialImages > 0 && n === 1;
 
@@ -190,7 +191,7 @@ export async function POST(request: NextRequest) {
             model,
             size,
             quality: quality === 'auto' ? undefined : quality,
-            background: background === 'auto' ? undefined : background,
+            background: effectiveBackground === 'auto' ? undefined : effectiveBackground,
             output_format,
             ...(useStreaming ? { partial_images: partialImages } : {})
         } as OpenAI.Responses.Tool;

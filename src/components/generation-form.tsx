@@ -16,8 +16,6 @@ import {
     RectangleVertical,
     Sparkles,
     Eraser,
-    ShieldCheck,
-    ShieldAlert,
     FileImage,
     Tally1,
     Tally2,
@@ -42,7 +40,7 @@ export type GenerationFormData = {
     output_format: 'png' | 'jpeg' | 'webp';
     output_compression?: number;
     background: 'transparent' | 'opaque' | 'auto';
-    moderation: 'low' | 'auto';
+    moderation: 'low';
     model: GptImageModel;
 };
 
@@ -70,8 +68,6 @@ type GenerationFormProps = {
     setCompression: React.Dispatch<React.SetStateAction<number[]>>;
     background: GenerationFormData['background'];
     setBackground: React.Dispatch<React.SetStateAction<GenerationFormData['background']>>;
-    moderation: GenerationFormData['moderation'];
-    setModeration: React.Dispatch<React.SetStateAction<GenerationFormData['moderation']>>;
     streamingAllowed: boolean;
     onEnhancePrompt: () => void;
     isEnhancingPrompt: boolean;
@@ -131,8 +127,6 @@ export function GenerationForm({
     setCompression,
     background,
     setBackground,
-    moderation,
-    setModeration,
     streamingAllowed,
     onEnhancePrompt,
     isEnhancingPrompt,
@@ -169,7 +163,7 @@ export function GenerationForm({
             quality,
             output_format: outputFormat,
             background,
-            moderation,
+            moderation: 'low',
             model
         };
         if (showCompression) {
@@ -447,17 +441,6 @@ export function GenerationForm({
                                 </div>
                             )}
 
-                            <div className='space-y-3'>
-                                <Label className='block text-white'>Moderation Level</Label>
-                                <RadioGroup
-                                    value={moderation}
-                                    onValueChange={(value) => setModeration(value as GenerationFormData['moderation'])}
-                                    disabled={isLoading}
-                                    className='flex flex-wrap gap-x-5 gap-y-3'>
-                                    <RadioItemWithIcon value='auto' id='mod-auto' label='Auto' Icon={ShieldCheck} />
-                                    <RadioItemWithIcon value='low' id='mod-low' label='Low' Icon={ShieldAlert} />
-                                </RadioGroup>
-                            </div>
                         </div>
                     )}
                 </CardContent>
