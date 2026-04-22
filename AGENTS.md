@@ -29,7 +29,7 @@ Key points:
 ```
 AZURE_OPENAI_ENDPOINT=https://...y/openai/v1
 AZURE_OPENAI_API_KEY=<your-key>
-AZURE_OPENAI_DEPLOYMENT_NAME=gpt-image-1.5
+AZURE_OPENAI_DEPLOYMENT_NAME=gpt-image-2
 PROMPT_ENHANCE_MODEL=gpt-5.3-chat  # Optional, for prompt enhancement
 ```
 
