@@ -470,7 +470,7 @@ export function GenerationForm({
                         title={!prompt && !isLoading ? 'Enter a prompt to enable' : undefined}
                         className='group relative flex w-full items-center justify-center gap-2 rounded-md border border-primary/60 bg-primary py-5 font-mono text-[11px] uppercase tracking-[0.22em] text-primary-foreground transition-all hover:brightness-105 hover:shadow-[0_8px_30px_-8px_oklch(0.86_0.20_125_/_0.55)] disabled:!pointer-events-auto disabled:cursor-not-allowed disabled:border-border disabled:bg-transparent disabled:text-muted-foreground disabled:opacity-100 disabled:shadow-none'>
                         {isLoading && <Loader2 className='h-4 w-4 animate-spin' />}
-                        <span>{isLoading ? 'Exposing…' : !prompt ? 'Enter a prompt …' : 'Generate →'}</span>
+                        <span>{isLoading ? 'Generating…' : !prompt ? 'Enter a prompt …' : 'Generate →'}</span>
                     </Button>
                 </CardFooter>
             </form>
