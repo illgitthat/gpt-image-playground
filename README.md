@@ -5,22 +5,26 @@ A web-based playground to interact with OpenAI's GPT image models (`gpt-image-2`
 > **Note:** The playground now defaults to `gpt-image-2`.
 
 <p align="center">
-  <img src="./readme-images/interface.jpg" alt="Interface" width="600"/>
+  <img src="./readme-images/interface.jpg" alt="Interface" width="800"/>
 </p>
 
 ## 📑 Table of Contents
 
-- [Features](#-features)
-- [Quick Start](#-quick-start)
-- [Deploy to Vercel](#-deploy-to-vercel)
-- [Local Deployment](#-local-deployment)
+- [ GPT Image/Video Playground](#-gpt-imagevideo-playground)
+  - [📑 Table of Contents](#-table-of-contents)
+  - [⚡ Quick Start](#-quick-start)
+  - [✨ Features](#-features)
+  - [▲ Deploy to Vercel](#-deploy-to-vercel)
+  - [🚀 Local Deployment](#-local-deployment)
     - [Prerequisites](#prerequisites)
-    - [API Key Setup](#1-set-up-api-key-)
-    - [Optional Configuration](#-optional-configuration)
-    - [Install & Run](#2-install-dependencies-)
-- [Production Run](#-production-run-bun--pm2)
-- [Contributing](#-contributing)
-- [License](#-license)
+    - [1. Set Up API Key 🟢](#1-set-up-api-key-)
+    - [🟡 Optional Configuration](#-optional-configuration)
+    - [2. Install Dependencies 🟢](#2-install-dependencies-)
+    - [3. Run the Development Server 🟢](#3-run-the-development-server-)
+    - [4. Open the Playground 🟢](#4-open-the-playground-)
+  - [🏭 Production Run (systemd)](#-production-run-systemd)
+  - [🤝 Contributing](#-contributing)
+  - [📄 License](#-license)
 
 ## ⚡ Quick Start
 
@@ -49,7 +53,7 @@ Then open [http://localhost:3000](http://localhost:3000) 🎉
 - **🎭 Integrated Masking Tool:** Easily create or upload masks directly within the editing mode to specify areas for modification. Draw directly on the image to generate a mask.
 
     <p align="center">
-      <img src="./readme-images/mask-creation.jpg" alt="Interface" width="350"/>
+      <img src="./readme-images/mask-creation.jpg" alt="Mask Creation" width="400"/>
     </p>
 
 - **📜 Detailed History & Cost Tracking:**
@@ -61,11 +65,11 @@ Then open [http://localhost:3000](http://localhost:3000) 🎉
     - Delete items from history
 
 <p align="center">
-  <img src="./readme-images/history.jpg" alt="Interface" width="1306"/>
+  <img src="./readme-images/history.jpg" alt="History Panel" width="1000"/>
 </p>
 
 <p align="center">
-  <img src="./readme-images/cost-breakdown.jpg" alt="Interface" width="350"/>
+  <img src="./readme-images/cost-breakdown.jpg" alt="Cost Breakdown" width="400"/>
 </p>
 
 - **🖼️ Flexible Image Output View:** View generated image batches as a grid or select individual images for a closer look.
@@ -240,7 +244,7 @@ Notes:
 
 ## 🤝 Contributing
 
-Contributions are welcome! Issues and feature requests, not as much welcome but I'll think about it.
+Contributions are welcome!
 
 ## 📄 License
 
