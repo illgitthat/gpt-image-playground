@@ -13,7 +13,7 @@ type StreamingEvent = {
     filename?: string;
     path?: string;
     output_format?: string;
-    usage?: { input_tokens?: number; output_tokens?: number; total_tokens?: number };
+    usage?: ApiUsage;
     images?: Array<{
         filename: string;
         b64_json: string;
@@ -22,6 +22,54 @@ type StreamingEvent = {
     }>;
     error?: string;
 };
+
+type ApiUsage = {
+    input_tokens?: number;
+    output_tokens?: number;
+    total_tokens?: number;
+    input_tokens_details?: {
+        text_tokens?: number;
+        image_tokens?: number;
+        cached_tokens?: number;
+    };
+};
+
+function addUsageValue(left?: number, right?: number): number | undefined {
+    if (left === undefined && right === undefined) {
+        return undefined;
+    }
+
+    return (left ?? 0) + (right ?? 0);
+}
+
+function mergeUsage(total: ApiUsage | undefined, next: ApiUsage | undefined): ApiUsage | undefined {
+    if (!next) {
+        return total;
+    }
+
+    return {
+        input_tokens: addUsageValue(total?.input_tokens, next.input_tokens),
+        output_tokens: addUsageValue(total?.output_tokens, next.output_tokens),
+        total_tokens: addUsageValue(total?.total_tokens, next.total_tokens),
+        input_tokens_details:
+            total?.input_tokens_details || next.input_tokens_details
+                ? {
+                      text_tokens: addUsageValue(
+                          total?.input_tokens_details?.text_tokens,
+                          next.input_tokens_details?.text_tokens
+                      ),
+                      image_tokens: addUsageValue(
+                          total?.input_tokens_details?.image_tokens,
+                          next.input_tokens_details?.image_tokens
+                      ),
+                      cached_tokens: addUsageValue(
+                          total?.input_tokens_details?.cached_tokens,
+                          next.input_tokens_details?.cached_tokens
+                      )
+                  }
+                : undefined
+    };
+}
 
 const config = {
     apiKey: process.env.AZURE_OPENAI_API_KEY || process.env.OPENAI_API_KEY,
@@ -250,7 +298,7 @@ export async function POST(request: NextRequest) {
 
                         let finalImageB64: string | undefined;
                         let partialImageCount = 0;
-                        let usage: { input_tokens?: number; output_tokens?: number; total_tokens?: number } | undefined;
+                        let usage: ApiUsage | undefined;
 
                         // Process stream events
                         for await (const event of response as AsyncIterable<{ type: string; [key: string]: unknown }>) {
@@ -279,7 +327,7 @@ export async function POST(request: NextRequest) {
                                 }
                             } else if (event.type === 'response.completed' || event.type === 'response.done') {
                                 // Extract usage from completed response
-                                const completedResponse = event.response as { usage?: typeof usage } | undefined;
+                                const completedResponse = event.response as { usage?: ApiUsage } | undefined;
                                 usage = completedResponse?.usage;
                             }
                         }
@@ -366,6 +414,7 @@ export async function POST(request: NextRequest) {
             path?: string;
             output_format: string;
         }> = [];
+        let aggregatedUsage: ApiUsage | undefined;
 
         // Generate n images (Responses API generates one at a time)
         for (let i = 0; i < Math.min(n, 10); i++) {
@@ -374,6 +423,7 @@ export async function POST(request: NextRequest) {
                 input: inputContent,
                 tools: [imageGenTool]
             });
+            aggregatedUsage = mergeUsage(aggregatedUsage, (response.usage as ApiUsage | null | undefined) ?? undefined);
 
             // Extract image from response
             const imageOutput = response.output?.find((item) => item.type === 'image_generation_call') as
@@ -403,7 +453,7 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Failed to generate any images.' }, { status: 500 });
         }
 
-        return NextResponse.json({ images: savedImagesData });
+        return NextResponse.json({ images: savedImagesData, usage: aggregatedUsage });
     } catch (error: unknown) {
         console.error('Error in /api/images:', error);
 

@@ -53,9 +53,33 @@ const formatDuration = (ms: number): string => {
     return `${(ms / 1000).toFixed(1)}s`;
 };
 
+const formatUsd = (value: number): string => {
+    if (!Number.isFinite(value)) {
+        return 'N/A';
+    }
+
+    if (value > 0 && value < 0.01) {
+        return '<$0.01';
+    }
+
+    return `$${value.toFixed(2)}`;
+};
+
+const formatUsdBadge = (value: number): string => {
+    if (!Number.isFinite(value)) {
+        return 'N/A';
+    }
+
+    if (value > 0 && value < 0.01) {
+        return '<0.01';
+    }
+
+    return value.toFixed(2);
+};
+
 const calculateCost = (value: number, rate: number): string => {
     const cost = value * rate;
-    return isNaN(cost) ? 'N/A' : cost.toFixed(2);
+    return formatUsd(cost);
 };
 
 const getImageModelForRates = (model: HistoryMetadata['model']): GptImageModel => {
@@ -94,7 +118,7 @@ export function HistoryPanel({
             images += item.images?.length ?? 0;
         });
 
-        return { totalCost: Math.round(cost * 100) / 100, totalImages: images };
+        return { totalCost: cost, totalImages: images };
     }, [history]);
 
     const averageCost = totalImages > 0 ? totalCost / totalImages : 0;
@@ -111,28 +135,28 @@ export function HistoryPanel({
     };
 
     return (
-        <Card className='flex h-full w-full flex-col overflow-hidden rounded-lg border border-white/10 bg-black'>
-            <CardHeader className='flex flex-row items-start justify-between gap-4 border-b border-white/10 px-4 py-3'>
+        <Card className='flex h-full w-full flex-col overflow-hidden rounded-lg border border-border bg-background'>
+            <CardHeader className='flex flex-row items-start justify-between gap-4 border-b border-border px-4 py-3'>
                 <div className='flex flex-col gap-1'>
-                    <CardTitle className='text-lg font-medium text-white'>History</CardTitle>
+                    <CardTitle className='text-lg font-medium text-foreground'>History</CardTitle>
                     {totalCost > 0 && (
                         <Dialog open={isTotalCostDialogOpen} onOpenChange={setIsTotalCostDialogOpen}>
                             <DialogTrigger asChild>
                                 <button
                                     className='mt-0.5 flex items-center gap-1 rounded-full bg-green-500/10 px-2 py-0.5 text-[12px] text-green-400 transition-colors hover:bg-green-500/20 hover:text-green-300'
                                     aria-label='Show total cost summary'>
-                                    Total Estimated Cost: ${totalCost.toFixed(2)}
+                                    Total Estimated Cost: {formatUsd(totalCost)}
                                 </button>
                             </DialogTrigger>
-                            <DialogContent className='border-neutral-700 bg-neutral-900 text-white sm:max-w-[450px]'>
+                            <DialogContent className='border-border bg-popover text-foreground sm:max-w-[450px]'>
                                 <DialogHeader>
-                                    <DialogTitle className='text-white'>Total Cost Summary</DialogTitle>
+                                    <DialogTitle className='text-foreground'>Total Cost Summary</DialogTitle>
                                     {/* Add sr-only description for accessibility */}
                                     <DialogDescription className='sr-only'>
                                         A summary of the total estimated cost for all generated images in the history.
                                     </DialogDescription>
                                 </DialogHeader>
-                                <div className='space-y-1 pt-1 text-xs text-neutral-400'>
+                                <div className='space-y-1 pt-1 text-xs text-muted-foreground'>
                                     {GPT_IMAGE_MODELS.map((modelName, index) => {
                                         const rates = getModelRates(modelName);
 
@@ -150,17 +174,17 @@ export function HistoryPanel({
                                         );
                                     })}
                                 </div>
-                                <div className='space-y-2 py-4 text-sm text-neutral-300'>
+                                <div className='space-y-2 py-4 text-sm text-foreground/90'>
                                     <div className='flex justify-between'>
                                         <span>Total Images Generated:</span> <span>{totalImages.toLocaleString()}</span>
                                     </div>
                                     <div className='flex justify-between'>
-                                        <span>Average Cost Per Image:</span> <span>${averageCost.toFixed(2)}</span>
+                                        <span>Average Cost Per Image:</span> <span>{formatUsd(averageCost)}</span>
                                     </div>
-                                    <hr className='my-2 border-neutral-700' />
-                                    <div className='flex justify-between font-medium text-white'>
+                                    <hr className='my-2 border-border' />
+                                    <div className='flex justify-between font-medium text-foreground'>
                                         <span>Total Estimated Cost:</span>
-                                        <span>${totalCost.toFixed(2)}</span>
+                                        <span>{formatUsd(totalCost)}</span>
                                     </div>
                                 </div>
                                 <DialogFooter>
@@ -169,7 +193,7 @@ export function HistoryPanel({
                                             type='button'
                                             variant='secondary'
                                             size='sm'
-                                            className='bg-neutral-700 text-neutral-200 hover:bg-neutral-600'>
+                                            className='bg-muted text-foreground hover:bg-muted/80'>
                                             Close
                                         </Button>
                                     </DialogClose>
@@ -183,14 +207,14 @@ export function HistoryPanel({
                         variant='ghost'
                         size='sm'
                         onClick={onClearHistory}
-                        className='h-auto rounded-md px-2 py-1 text-white/60 hover:bg-white/10 hover:text-white'>
+                        className='h-auto rounded-md px-2 py-1 text-muted-foreground hover:bg-muted/60 hover:text-foreground'>
                         Clear
                     </Button>
                 )}
             </CardHeader>
             <CardContent className='flex-grow overflow-y-auto p-4'>
                 {history.length === 0 ? (
-                    <div className='flex h-full items-center justify-center text-white/40'>
+                    <div className='flex h-full items-center justify-center text-muted-foreground/70'>
                         <p>Generated images will appear here.</p>
                     </div>
                 ) : (
@@ -220,7 +244,7 @@ export function HistoryPanel({
                                     <div className='group relative'>
                                         <button
                                             onClick={() => onSelectImage(item)}
-                                            className='relative block aspect-square w-full overflow-hidden rounded-t-md border border-white/20 transition-all duration-150 group-hover:border-white/40 focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-black focus:outline-none'
+                                            className='relative block aspect-square w-full overflow-hidden rounded-t-md border border-border transition-all duration-150 group-hover:border-foreground/40 focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-black focus:outline-none'
                                             aria-label={`View image batch from ${new Date(item.timestamp).toLocaleString()}`}>
                                             {thumbnailUrl ? (
                                                 isVideo ? (
@@ -242,13 +266,13 @@ export function HistoryPanel({
                                                     />
                                                 )
                                             ) : (
-                                                <div className='flex h-full w-full items-center justify-center bg-neutral-800 text-neutral-500'>
+                                                <div className='flex h-full w-full items-center justify-center bg-muted text-muted-foreground/80'>
                                                     ?
                                                 </div>
                                             )}
                                             <div
                                                 className={cn(
-                                                    'pointer-events-none absolute top-1 left-1 z-10 flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[11px] text-white',
+                                                    'pointer-events-none absolute top-1 left-1 z-10 flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[11px] text-foreground',
                                                     item.mode === 'edit'
                                                         ? 'bg-orange-600/80'
                                                         : item.mode === 'video'
@@ -269,23 +293,23 @@ export function HistoryPanel({
                                                       : 'Create'}
                                             </div>
                                             {isMultiImage && (
-                                                <div className='pointer-events-none absolute right-1 bottom-1 z-10 flex items-center gap-1 rounded-full bg-black/70 px-1.5 py-0.5 text-[12px] text-white'>
+                                                <div className='pointer-events-none absolute right-1 bottom-1 z-10 flex items-center gap-1 rounded-full bg-background/70 px-1.5 py-0.5 text-[12px] text-foreground'>
                                                     <Layers size={16} />
                                                     {mediaCount}
                                                 </div>
                                             )}
                                             <div className='pointer-events-none absolute bottom-1 left-1 z-10 flex items-center gap-1'>
-                                                <div className='flex items-center gap-1 rounded-full border border-white/10 bg-neutral-900/80 px-1 py-0.5 text-[11px] text-white/70'>
+                                                <div className='flex items-center gap-1 rounded-full border border-border bg-popover/80 px-1 py-0.5 text-[11px] text-muted-foreground'>
                                                     {originalStorageMode === 'fs' ? (
-                                                        <HardDrive size={12} className='text-neutral-400' />
+                                                        <HardDrive size={12} className='text-muted-foreground' />
                                                     ) : (
                                                         <Database size={12} className='text-blue-400' />
                                                     )}
                                                     <span>{originalStorageMode === 'fs' ? 'file' : 'db'}</span>
                                                 </div>
                                                 {item.output_format && !isVideo && (
-                                                    <div className='flex items-center gap-1 rounded-full border border-white/10 bg-neutral-900/80 px-1 py-0.5 text-[11px] text-white/70'>
-                                                        <FileImage size={12} className='text-neutral-400' />
+                                                    <div className='flex items-center gap-1 rounded-full border border-border bg-popover/80 px-1 py-0.5 text-[11px] text-muted-foreground'>
+                                                        <FileImage size={12} className='text-muted-foreground' />
                                                         <span>{outputFormat.toUpperCase()}</span>
                                                     </div>
                                                 )}
@@ -301,22 +325,22 @@ export function HistoryPanel({
                                                             e.stopPropagation();
                                                             setOpenCostDialogTimestamp(itemKey);
                                                         }}
-                                                        className='absolute top-1 right-1 z-20 flex items-center gap-0.5 rounded-full bg-black/40 px-1.5 py-0.5 text-[11px] text-white/70 backdrop-blur-sm transition-colors hover:bg-black/60 hover:text-white'
+                                                        className='absolute top-1 right-1 z-20 flex items-center gap-0.5 rounded-full bg-background/40 px-1.5 py-0.5 text-[11px] text-muted-foreground backdrop-blur-sm transition-colors hover:bg-background/60 hover:text-foreground'
                                                         aria-label='Show cost breakdown'>
                                                         <DollarSign size={12} />
-                                                        {item.costDetails.estimated_cost_usd.toFixed(2)}
+                                                        {formatUsdBadge(item.costDetails.estimated_cost_usd)}
                                                     </button>
                                                 </DialogTrigger>
-                                                <DialogContent className='border-neutral-700 bg-neutral-900 text-white sm:max-w-[450px]'>
+                                                <DialogContent className='border-border bg-popover text-foreground sm:max-w-[450px]'>
                                                     <DialogHeader>
-                                                        <DialogTitle className='text-white'>Cost Breakdown</DialogTitle>
+                                                        <DialogTitle className='text-foreground'>Cost Breakdown</DialogTitle>
                                                         <DialogDescription className='sr-only'>
                                                             Estimated cost breakdown for this image generation.
                                                         </DialogDescription>
                                                     </DialogHeader>
                                                     {item.mode === 'video' ? (
-                                                        <div className='space-y-3 py-3 text-sm text-neutral-300'>
-                                                            <div className='space-y-1 text-xs text-neutral-400'>
+                                                        <div className='space-y-3 py-3 text-sm text-foreground/90'>
+                                                            <div className='space-y-1 text-xs text-muted-foreground'>
                                                                 <p>Pricing for Sora video:</p>
                                                                 <ul className='list-disc pl-4'>
                                                                     <li>$0.10 per second</li>
@@ -326,12 +350,10 @@ export function HistoryPanel({
                                                                 <span>Duration (s):</span>
                                                                 <span>{item.videoSeconds ?? 'N/A'}</span>
                                                             </div>
-                                                            <hr className='my-2 border-neutral-700' />
-                                                            <div className='flex justify-between font-medium text-white'>
+                                                            <hr className='my-2 border-border' />
+                                                            <div className='flex justify-between font-medium text-foreground'>
                                                                 <span>Total Estimated Cost:</span>
-                                                                <span>
-                                                                    ${item.costDetails.estimated_cost_usd.toFixed(2)}
-                                                                </span>
+                                                                <span>{formatUsd(item.costDetails.estimated_cost_usd)}</span>
                                                             </div>
                                                         </div>
                                                     ) : (
@@ -342,7 +364,7 @@ export function HistoryPanel({
 
                                                                 return (
                                                                     <>
-                                                                        <div className='space-y-1 pt-1 text-xs text-neutral-400'>
+                                                                        <div className='space-y-1 pt-1 text-xs text-muted-foreground'>
                                                                             <p>Pricing for {modelForRates}:</p>
                                                                             <ul className='list-disc pl-4'>
                                                                                 <li>
@@ -362,12 +384,12 @@ export function HistoryPanel({
                                                                                 </li>
                                                                             </ul>
                                                                         </div>
-                                                                        <div className='space-y-2 py-4 text-sm text-neutral-300'>
+                                                                        <div className='space-y-2 py-4 text-sm text-foreground/90'>
                                                                             <div className='flex justify-between'>
                                                                                 <span>Text Input Tokens:</span>{' '}
                                                                                 <span>
                                                                                     {item.costDetails.text_input_tokens.toLocaleString()}{' '}
-                                                                                    (~$
+                                                                                    (~
                                                                                     {calculateCost(
                                                                                         item.costDetails
                                                                                             .text_input_tokens,
@@ -382,7 +404,7 @@ export function HistoryPanel({
                                                                                     <span>Image Input Tokens:</span>{' '}
                                                                                     <span>
                                                                                         {item.costDetails.image_input_tokens.toLocaleString()}{' '}
-                                                                                        (~$
+                                                                                        (~
                                                                                         {calculateCost(
                                                                                             item.costDetails
                                                                                                 .image_input_tokens,
@@ -396,7 +418,7 @@ export function HistoryPanel({
                                                                                 <span>Image Output Tokens:</span>{' '}
                                                                                 <span>
                                                                                     {item.costDetails.image_output_tokens.toLocaleString()}{' '}
-                                                                                    (~$
+                                                                                    (~
                                                                                     {calculateCost(
                                                                                         item.costDetails
                                                                                             .image_output_tokens,
@@ -405,15 +427,10 @@ export function HistoryPanel({
                                                                                     )
                                                                                 </span>
                                                                             </div>
-                                                                            <hr className='my-2 border-neutral-700' />
-                                                                            <div className='flex justify-between font-medium text-white'>
+                                                                            <hr className='my-2 border-border' />
+                                                                            <div className='flex justify-between font-medium text-foreground'>
                                                                                 <span>Total Estimated Cost:</span>
-                                                                                <span>
-                                                                                    $
-                                                                                    {item.costDetails.estimated_cost_usd.toFixed(
-                                                                                        2
-                                                                                    )}
-                                                                                </span>
+                                                                                <span>{formatUsd(item.costDetails.estimated_cost_usd)}</span>
                                                                             </div>
                                                                         </div>
                                                                     </>
@@ -427,7 +444,7 @@ export function HistoryPanel({
                                                                 type='button'
                                                                 variant='secondary'
                                                                 size='sm'
-                                                                className='bg-neutral-700 text-neutral-200 hover:bg-neutral-600'>
+                                                                className='bg-muted text-foreground hover:bg-muted/80'>
                                                                 Close
                                                             </Button>
                                                         </DialogClose>
@@ -437,38 +454,38 @@ export function HistoryPanel({
                                         )}
                                     </div>
 
-                                    <div className='space-y-1 rounded-b-md border border-t-0 border-neutral-700 bg-black p-2 text-xs text-white/60'>
+                                    <div className='space-y-1 rounded-b-md border border-t-0 border-border bg-background p-2 text-xs text-muted-foreground'>
                                         <p title={`Generated on: ${new Date(item.timestamp).toLocaleString()}`}>
-                                            <span className='font-medium text-white/80'>Time:</span>{' '}
+                                            <span className='font-medium text-foreground/90'>Time:</span>{' '}
                                             {formatDuration(item.durationMs)}
                                         </p>
                                         <p>
-                                            <span className='font-medium text-white/80'>Model:</span>{' '}
+                                            <span className='font-medium text-foreground/90'>Model:</span>{' '}
                                             {item.model || (isVideo ? 'sora-2' : 'gpt-image-1')}
                                         </p>
                                         {isVideo ? (
                                             <>
                                                 <p>
-                                                    <span className='font-medium text-white/80'>Resolution:</span>{' '}
+                                                    <span className='font-medium text-foreground/90'>Resolution:</span>{' '}
                                                     {item.videoSize}
                                                 </p>
                                                 <p>
-                                                    <span className='font-medium text-white/80'>Duration:</span>{' '}
+                                                    <span className='font-medium text-foreground/90'>Duration:</span>{' '}
                                                     {item.videoSeconds ? `${item.videoSeconds}s` : '—'}
                                                 </p>
                                             </>
                                         ) : (
                                             <>
                                                 <p>
-                                                    <span className='font-medium text-white/80'>Quality:</span>{' '}
+                                                    <span className='font-medium text-foreground/90'>Quality:</span>{' '}
                                                     {item.quality}
                                                 </p>
                                                 <p>
-                                                    <span className='font-medium text-white/80'>BG:</span>{' '}
+                                                    <span className='font-medium text-foreground/90'>BG:</span>{' '}
                                                     {item.background}
                                                 </p>
                                                 <p>
-                                                    <span className='font-medium text-white/80'>Mod:</span>{' '}
+                                                    <span className='font-medium text-foreground/90'>Mod:</span>{' '}
                                                     {item.moderation}
                                                 </p>
                                             </>
@@ -483,19 +500,19 @@ export function HistoryPanel({
                                                     <Button
                                                         variant='outline'
                                                         size='sm'
-                                                        className='h-6 flex-grow border-white/20 px-2 py-1 text-xs text-white/70 hover:bg-white/10 hover:text-white'
+                                                        className='h-6 flex-grow border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted/60 hover:text-foreground'
                                                         onClick={() => setOpenPromptDialogTimestamp(itemKey)}>
                                                         Show Prompt
                                                     </Button>
                                                 </DialogTrigger>
-                                                <DialogContent className='border-neutral-700 bg-neutral-900 text-white sm:max-w-[625px]'>
+                                                <DialogContent className='border-border bg-popover text-foreground sm:max-w-[625px]'>
                                                     <DialogHeader>
-                                                        <DialogTitle className='text-white'>Prompt</DialogTitle>
+                                                        <DialogTitle className='text-foreground'>Prompt</DialogTitle>
                                                         <DialogDescription className='sr-only'>
                                                             The full prompt used to generate this image batch.
                                                         </DialogDescription>
                                                     </DialogHeader>
-                                                    <div className='max-h-[400px] overflow-y-auto rounded-md border border-neutral-600 bg-neutral-800 p-3 py-4 text-sm text-neutral-300'>
+                                                    <div className='max-h-[400px] overflow-y-auto rounded-md border border-border bg-muted p-3 py-4 text-sm text-foreground/90'>
                                                         {item.prompt || 'No prompt recorded.'}
                                                     </div>
                                                     <DialogFooter>
@@ -508,7 +525,7 @@ export function HistoryPanel({
                                                                     setOpenPromptDialogTimestamp(null);
                                                                 }
                                                             }}
-                                                            className='border-neutral-600 text-neutral-300 hover:bg-neutral-700 hover:text-white'>
+                                                            className='border-border text-foreground/90 hover:bg-muted hover:text-foreground'>
                                                             <ArrowUpRight className='mr-2 h-4 w-4' />
                                                             Use Prompt
                                                         </Button>
@@ -516,7 +533,7 @@ export function HistoryPanel({
                                                             variant='outline'
                                                             size='sm'
                                                             onClick={() => handleCopy(item.prompt, itemKey)}
-                                                            className='border-neutral-600 text-neutral-300 hover:bg-neutral-700 hover:text-white'>
+                                                            className='border-border text-foreground/90 hover:bg-muted hover:text-foreground'>
                                                             {copiedTimestamp === itemKey ? (
                                                                 <Check className='mr-2 h-4 w-4 text-green-400' />
                                                             ) : (
@@ -529,7 +546,7 @@ export function HistoryPanel({
                                                                 type='button'
                                                                 variant='secondary'
                                                                 size='sm'
-                                                                className='bg-neutral-700 text-neutral-200 hover:bg-neutral-600'>
+                                                                className='bg-muted text-foreground hover:bg-muted/80'>
                                                                 Close
                                                             </Button>
                                                         </DialogClose>
@@ -543,7 +560,7 @@ export function HistoryPanel({
                                                 }}>
                                                 <DialogTrigger asChild>
                                                     <Button
-                                                        className='h-6 w-6 bg-red-700/60 text-white hover:bg-red-600/60'
+                                                        className='h-6 w-6 bg-destructive/70 text-foreground hover:bg-destructive/70'
                                                         onClick={(e) => {
                                                             e.stopPropagation();
                                                             onDeleteItemRequest(item);
@@ -552,12 +569,12 @@ export function HistoryPanel({
                                                         <Trash2 size={14} />
                                                     </Button>
                                                 </DialogTrigger>
-                                                <DialogContent className='border-neutral-700 bg-neutral-900 text-white sm:max-w-md'>
+                                                <DialogContent className='border-border bg-popover text-foreground sm:max-w-md'>
                                                     <DialogHeader>
-                                                        <DialogTitle className='text-white'>
+                                                        <DialogTitle className='text-foreground'>
                                                             Confirm Deletion
                                                         </DialogTitle>
-                                                        <DialogDescription className='pt-2 text-neutral-300'>
+                                                        <DialogDescription className='pt-2 text-foreground/90'>
                                                             Are you sure you want to delete this history entry? This
                                                             will remove {mediaCount} item(s). This action cannot be
                                                             undone.
@@ -570,11 +587,11 @@ export function HistoryPanel({
                                                             onCheckedChange={(checked) =>
                                                                 onDeletePreferenceDialogChange(!!checked)
                                                             }
-                                                            className='border-neutral-400 bg-white data-[state=checked]:border-neutral-700 data-[state=checked]:bg-white data-[state=checked]:text-black dark:border-neutral-500 dark:!bg-white'
+                                                            className='border-input bg-primary data-[state=checked]:border-border data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground dark:border-input dark:!bg-primary'
                                                         />
                                                         <label
                                                             htmlFor={`dont-ask-${item.timestamp}`}
-                                                            className='text-sm leading-none font-medium text-neutral-300 peer-disabled:cursor-not-allowed peer-disabled:opacity-70'>
+                                                            className='text-sm leading-none font-medium text-foreground/90 peer-disabled:cursor-not-allowed peer-disabled:opacity-70'>
                                                             Don&apos;t ask me again
                                                         </label>
                                                     </div>
@@ -584,7 +601,7 @@ export function HistoryPanel({
                                                             variant='outline'
                                                             size='sm'
                                                             onClick={onCancelDeletion}
-                                                            className='border-neutral-600 text-neutral-300 hover:bg-neutral-700 hover:text-white'>
+                                                            className='border-border text-foreground/90 hover:bg-muted hover:text-foreground'>
                                                             Cancel
                                                         </Button>
                                                         <Button
@@ -592,7 +609,7 @@ export function HistoryPanel({
                                                             variant='destructive'
                                                             size='sm'
                                                             onClick={onConfirmDeletion}
-                                                            className='bg-red-600 text-white hover:bg-red-500'>
+                                                            className='bg-destructive text-foreground hover:bg-destructive'>
                                                             Delete
                                                         </Button>
                                                     </DialogFooter>

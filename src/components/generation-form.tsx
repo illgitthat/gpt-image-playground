@@ -92,12 +92,12 @@ const RadioItemWithIcon = ({
             value={value}
             id={id}
             disabled={disabled}
-            className='border-white/40 text-white data-[state=checked]:border-white data-[state=checked]:text-white'
+            className='border-input text-foreground data-[state=checked]:border-foreground data-[state=checked]:text-foreground'
         />
         <Label
             htmlFor={id}
-            className={`flex items-center gap-2 text-base text-white/80 ${disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}>
-            <Icon className='h-5 w-5 text-white/60' />
+            className={`flex items-center gap-2 text-base text-foreground/90 ${disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}>
+            <Icon className='h-5 w-5 text-muted-foreground' />
             {label}
         </Label>
     </div>
@@ -173,23 +173,23 @@ export function GenerationForm({
     };
 
     return (
-        <Card className='flex w-full flex-col rounded-lg border border-white/10 bg-black lg:h-full lg:overflow-hidden'>
-            <CardHeader className='flex items-start justify-between border-b border-white/10 pb-4'>
+        <Card className='flex w-full flex-col rounded-lg border border-border bg-background lg:h-full lg:overflow-hidden'>
+            <CardHeader className='flex items-start justify-between border-b border-border pb-4'>
                 <div>
                     <div className='flex items-center'>
-                        <CardTitle className='py-1 text-lg font-medium text-white'>Generate Image</CardTitle>
+                        <CardTitle className='py-1 text-lg font-medium text-foreground'>Generate Image</CardTitle>
                         {isPasswordRequiredByBackend && (
                             <Button
                                 variant='ghost'
                                 size='icon'
                                 onClick={onOpenPasswordDialog}
-                                className='ml-2 text-white/60 hover:text-white'
+                                className='ml-2 text-muted-foreground hover:text-foreground'
                                 aria-label='Configure Password'>
                                 {clientPasswordHash ? <Lock className='h-4 w-4' /> : <LockOpen className='h-4 w-4' />}
                             </Button>
                         )}
                     </div>
-                    <CardDescription className='mt-1 text-white/60'>
+                    <CardDescription className='mt-1 text-muted-foreground'>
                         Create a new image from a text prompt.
                     </CardDescription>
                 </div>
@@ -200,11 +200,11 @@ export function GenerationForm({
                     {/* Streaming Previews section hidden by request
                     <div className='space-y-2'>
                         <div className='flex items-center gap-2'>
-                            <Label className='text-white'>Streaming Previews</Label>
-                            <span className='text-xs text-white/60'>Shows in-progress frames while your image generates (adds a small extra cost).</span>
+                            <Label className='text-foreground'>Streaming Previews</Label>
+                            <span className='text-xs text-muted-foreground'>Shows in-progress frames while your image generates (adds a small extra cost).</span>
                             <Tooltip>
                                 <TooltipTrigger asChild>
-                                    <HelpCircle className='h-4 w-4 cursor-help text-white/40 hover:text-white/60' />
+                                    <HelpCircle className='h-4 w-4 cursor-help text-muted-foreground/70 hover:text-muted-foreground' />
                                 </TooltipTrigger>
                                 <TooltipContent className='max-w-[250px]'>
                                     Each preview image adds ~$0.003 to the cost (100 additional output tokens).
@@ -212,18 +212,18 @@ export function GenerationForm({
                             </Tooltip>
                         </div>
                         {!streamingAllowed && (
-                            <p className='text-xs text-white/50'>Available when generating a single image (n = 1).</p>
+                            <p className='text-xs text-muted-foreground/80'>Available when generating a single image (n = 1).</p>
                         )}
                     </div>
                     */}
 
                     <div className='space-y-1.5'>
                         <div className='flex items-center justify-between gap-2'>
-                            <Label htmlFor='prompt' className='text-white'>
+                            <Label htmlFor='prompt' className='text-foreground'>
                                 Prompt
                             </Label>
                             <div className='flex items-center gap-2'>
-                                {enhanceError && <span className='text-xs text-red-300'>{enhanceError}</span>}
+                                {enhanceError && <span className='text-xs text-destructive'>{enhanceError}</span>}
                                 <Tooltip>
                                     <TooltipTrigger asChild>
                                         <Button
@@ -232,7 +232,7 @@ export function GenerationForm({
                                             size='sm'
                                             onClick={handleCopyPrompt}
                                             disabled={!prompt.trim()}
-                                            className='h-8 w-8 rounded-full border border-white/15 bg-white/5 p-0 text-white/80 hover:bg-white/15 hover:text-white'>
+                                            className='h-8 w-8 rounded-full border border-border bg-muted/30 p-0 text-foreground/90 hover:bg-muted/80 hover:text-foreground'>
                                             {isCopied ? (
                                                 <Check className='h-4 w-4 text-green-400' />
                                             ) : (
@@ -241,7 +241,7 @@ export function GenerationForm({
                                             <span className='sr-only'>Copy prompt</span>
                                         </Button>
                                     </TooltipTrigger>
-                                    <TooltipContent className='bg-black text-white'>
+                                    <TooltipContent className='bg-background text-foreground'>
                                         {isCopied ? 'Copied!' : 'Copy prompt'}
                                     </TooltipContent>
                                 </Tooltip>
@@ -253,7 +253,7 @@ export function GenerationForm({
                                             size='sm'
                                             onClick={onEnhancePrompt}
                                             disabled={isLoading || isEnhancingPrompt || !prompt.trim()}
-                                            className='h-8 gap-1 rounded-full border border-white/15 bg-white/5 px-3 text-xs text-white/80 hover:bg-white/15 hover:text-white'>
+                                            className='h-8 gap-1 rounded-full border border-border bg-muted/30 px-3 text-xs text-foreground/90 hover:bg-muted/80 hover:text-foreground'>
                                             {isEnhancingPrompt ? (
                                                 <Loader2 className='h-4 w-4 animate-spin' />
                                             ) : (
@@ -262,7 +262,7 @@ export function GenerationForm({
                                             <span className='hidden sm:inline'>Auto enhance</span>
                                         </Button>
                                     </TooltipTrigger>
-                                    <TooltipContent className='bg-black text-white'>
+                                    <TooltipContent className='bg-background text-foreground'>
                                         Refine the prompt with GPT-5.3 Chat.
                                     </TooltipContent>
                                 </Tooltip>
@@ -275,12 +275,12 @@ export function GenerationForm({
                             onChange={(e) => setPrompt(e.target.value)}
                             required
                             disabled={isLoading}
-                            className='min-h-[80px] rounded-md border border-white/20 bg-black text-white placeholder:text-white/40 focus:border-white/50 focus:ring-white/50'
+                            className='min-h-[80px] rounded-md border border-border bg-background text-foreground placeholder:text-muted-foreground/70 focus:border-ring focus:ring-ring'
                         />
                     </div>
 
                     <div className='space-y-2'>
-                        <Label htmlFor='n-slider' className='text-white'>
+                        <Label htmlFor='n-slider' className='text-foreground'>
                             Number of Images: {n[0]}
                         </Label>
                         <Slider
@@ -291,12 +291,12 @@ export function GenerationForm({
                             value={n}
                             onValueChange={setN}
                             disabled={isLoading}
-                            className='mt-3 [&>button]:border-black [&>button]:bg-white [&>button]:ring-offset-black [&>span:first-child]:h-1 [&>span:first-child>span]:bg-white'
+                            className='mt-3 [&>button]:border-background [&>button]:bg-primary [&>button]:ring-offset-black [&>span:first-child]:h-1 [&>span:first-child>span]:bg-primary'
                         />
                     </div>
 
                     <div className='space-y-3'>
-                        <Label className='block text-white'>Size</Label>
+                        <Label className='block text-foreground'>Size</Label>
                         <RadioGroup
                             value={size}
                             onValueChange={(value) => setSize(value as GenerationFormData['size'])}
@@ -324,11 +324,11 @@ export function GenerationForm({
                             type='button'
                             variant='ghost'
                             onClick={() => setIsAdvancedOpen(!isAdvancedOpen)}
-                            className='flex w-full items-center justify-between rounded-md border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white hover:bg-white/10'>
+                            className='flex w-full items-center justify-between rounded-md border border-border bg-muted/30 px-4 py-2 text-sm font-medium text-foreground hover:bg-muted/60'>
                             <div className='flex items-center gap-2'>
                                 <Settings2 className='h-4 w-4' />
                                 Advanced Settings
-                                <span className='hidden rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] font-normal text-white/60 sm:inline-flex'>
+                                <span className='hidden rounded-full border border-border bg-muted/30 px-2 py-0.5 text-[11px] font-normal text-muted-foreground sm:inline-flex'>
                                     {model}
                                 </span>
                             </div>
@@ -341,10 +341,10 @@ export function GenerationForm({
                     </div>
 
                     {isAdvancedOpen && (
-                        <div className='animate-in fade-in slide-in-from-top-2 space-y-5 rounded-md border border-white/10 bg-black/20 p-4 duration-200'>
+                        <div className='animate-in fade-in slide-in-from-top-2 space-y-5 rounded-md border border-border bg-background/20 p-4 duration-200'>
                             <div className='space-y-2'>
                                 <div className='flex items-center justify-between gap-3'>
-                                    <Label htmlFor='model-select' className='text-white'>
+                                    <Label htmlFor='model-select' className='text-foreground'>
                                         Model
                                     </Label>
                                 </div>
@@ -354,12 +354,12 @@ export function GenerationForm({
                                     disabled={isLoading}>
                                     <SelectTrigger
                                         id='model-select'
-                                        className='w-full rounded-md border border-white/20 bg-black text-white focus:border-white/50 focus:ring-white/50'>
+                                        className='w-full rounded-md border border-border bg-background text-foreground focus:border-ring focus:ring-ring'>
                                         <SelectValue placeholder='Select model' />
                                     </SelectTrigger>
-                                    <SelectContent className='border-white/20 bg-black text-white'>
+                                    <SelectContent className='border-border bg-background text-foreground'>
                                         {GPT_IMAGE_MODELS.map((modelName) => (
-                                            <SelectItem key={modelName} value={modelName} className='focus:bg-white/10'>
+                                            <SelectItem key={modelName} value={modelName} className='focus:bg-muted/60'>
                                                 {modelName}
                                             </SelectItem>
                                         ))}
@@ -368,7 +368,7 @@ export function GenerationForm({
                             </div>
 
                             <div className='space-y-3'>
-                                <Label className='block text-white'>Quality</Label>
+                                <Label className='block text-foreground'>Quality</Label>
                                 <RadioGroup
                                     value={quality}
                                     onValueChange={(value) => setQuality(value as GenerationFormData['quality'])}
@@ -387,7 +387,7 @@ export function GenerationForm({
                             </div>
 
                             <div className='space-y-3'>
-                                <Label className='block text-white'>Background</Label>
+                                <Label className='block text-foreground'>Background</Label>
                                 <RadioGroup
                                     value={background}
                                     onValueChange={(value) => setBackground(value as GenerationFormData['background'])}
@@ -404,12 +404,12 @@ export function GenerationForm({
                                     />
                                 </RadioGroup>
                                 {!supportsTransparentBackground && (
-                                    <p className='text-xs text-white/50'>Transparent background is unavailable for gpt-image-2.</p>
+                                    <p className='text-xs text-muted-foreground/80'>Transparent background is unavailable for gpt-image-2.</p>
                                 )}
                             </div>
 
                             <div className='space-y-3'>
-                                <Label className='block text-white'>Output Format</Label>
+                                <Label className='block text-foreground'>Output Format</Label>
                                 <RadioGroup
                                     value={outputFormat}
                                     onValueChange={(value) =>
@@ -425,7 +425,7 @@ export function GenerationForm({
 
                             {showCompression && (
                                 <div className='space-y-2 pt-2 transition-opacity duration-300'>
-                                    <Label htmlFor='compression-slider' className='text-white'>
+                                    <Label htmlFor='compression-slider' className='text-foreground'>
                                         Compression: {compression[0]}%
                                     </Label>
                                     <Slider
@@ -436,7 +436,7 @@ export function GenerationForm({
                                         value={compression}
                                         onValueChange={setCompression}
                                         disabled={isLoading}
-                                        className='mt-3 [&>button]:border-black [&>button]:bg-white [&>button]:ring-offset-black [&>span:first-child]:h-1 [&>span:first-child>span]:bg-white'
+                                        className='mt-3 [&>button]:border-background [&>button]:bg-primary [&>button]:ring-offset-black [&>span:first-child]:h-1 [&>span:first-child>span]:bg-primary'
                                     />
                                 </div>
                             )}
@@ -444,11 +444,11 @@ export function GenerationForm({
                         </div>
                     )}
                 </CardContent>
-                <CardFooter className='border-t border-white/10 p-4'>
+                <CardFooter className='border-t border-border p-4'>
                     <Button
                         type='submit'
                         disabled={isLoading || !prompt}
-                        className='flex w-full items-center justify-center gap-2 rounded-md bg-white text-black hover:bg-white/90 disabled:bg-white/10 disabled:text-white/40'>
+                        className='flex w-full items-center justify-center gap-2 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:bg-muted/60 disabled:text-muted-foreground/70'>
                         {isLoading && <Loader2 className='h-4 w-4 animate-spin' />}
                         {isLoading ? 'Generating...' : 'Generate'}
                     </Button>

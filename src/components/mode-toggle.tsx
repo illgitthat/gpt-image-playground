@@ -15,8 +15,8 @@ export function ModeToggle({ currentMode, onModeChange }: ModeToggleProps) {
                     value='generate'
                     className={`rounded-md border px-3 py-1 text-sm transition-colors ${
                         currentMode === 'generate'
-                            ? 'border-white bg-white text-black'
-                            : 'border-dashed border-white/30 bg-transparent text-white/60 hover:border-white/50 hover:text-white/80'
+                            ? 'border-foreground bg-primary text-primary-foreground'
+                            : 'border-dashed border-input bg-transparent text-muted-foreground hover:border-foreground/50 hover:text-foreground/90'
                     } `}>
                     Generate
                 </TabsTrigger>
@@ -24,8 +24,8 @@ export function ModeToggle({ currentMode, onModeChange }: ModeToggleProps) {
                     value='edit'
                     className={`rounded-md border px-3 py-1 text-sm transition-colors ${
                         currentMode === 'edit'
-                            ? 'border-white bg-white text-black'
-                            : 'border-dashed border-white/30 bg-transparent text-white/60 hover:border-white/50 hover:text-white/80'
+                            ? 'border-foreground bg-primary text-primary-foreground'
+                            : 'border-dashed border-input bg-transparent text-muted-foreground hover:border-foreground/50 hover:text-foreground/90'
                     } `}>
                     Edit
                 </TabsTrigger>
@@ -33,8 +33,8 @@ export function ModeToggle({ currentMode, onModeChange }: ModeToggleProps) {
                 <TabsTrigger
                     value='video'
                     className={`rounded-md border px-3 py-1 text-sm transition-colors ${currentMode === 'video'
-                            ? 'border-white bg-white text-black'
-                            : 'border-dashed border-white/30 bg-transparent text-white/60 hover:border-white/50 hover:text-white/80'
+                            ? 'border-foreground bg-primary text-primary-foreground'
+                            : 'border-dashed border-input bg-transparent text-muted-foreground hover:border-foreground/50 hover:text-foreground/90'
                         } `}>
                     Video
                 </TabsTrigger>

@@ -5,6 +5,7 @@ import { GenerationForm, type GenerationFormData } from '@/components/generation
 import { HistoryPanel } from '@/components/history-panel';
 import { ImageOutput } from '@/components/image-output';
 import { PasswordDialog } from '@/components/password-dialog';
+import { ThemeToggle } from '@/components/theme-toggle';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { VideoForm, type VideoFormData } from '@/components/video-form';
 import { VideoOutput } from '@/components/video-output';
@@ -1343,7 +1344,7 @@ export default function HomePage() {
     };
 
     return (
-        <main className='flex min-h-screen flex-col items-center bg-black p-4 text-white md:p-8 lg:p-12'>
+        <main className='flex min-h-screen flex-col items-center bg-background p-4 text-foreground md:p-8 lg:p-12'>
             <PasswordDialog
                 isOpen={isPasswordDialogOpen}
                 onOpenChange={setIsPasswordDialogOpen}
@@ -1356,6 +1357,9 @@ export default function HomePage() {
                 }
             />
             <div className='w-full max-w-7xl space-y-6'>
+                <div className='flex items-center justify-end'>
+                    <ThemeToggle />
+                </div>
                 <div className='grid grid-cols-1 gap-6 lg:grid-cols-2'>
                     <div className='relative flex flex-col lg:col-span-1 lg:h-[70vh] lg:min-h-[600px]'>
                         <div className={mode === 'generate' ? 'block h-full w-full' : 'hidden'}>
@@ -1462,8 +1466,8 @@ export default function HomePage() {
                     </div>
                     <div className='flex min-h-[360px] flex-col lg:col-span-1 lg:h-[70vh] lg:min-h-[600px]'>
                         {error && (
-                            <Alert variant='destructive' className='mb-4 border-red-500/50 bg-red-900/20 text-red-300'>
-                                <AlertTitle className='text-red-200'>Error</AlertTitle>
+                            <Alert variant='destructive' className='mb-4 border-destructive/50 bg-destructive/15 text-destructive'>
+                                <AlertTitle className='text-destructive'>Error</AlertTitle>
                                 <AlertDescription>{error}</AlertDescription>
                             </Alert>
                         )}
