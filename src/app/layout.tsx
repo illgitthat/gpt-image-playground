@@ -14,7 +14,7 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 const instrumentSerif = Instrument_Serif({
-    variable: '--font-display',
+    variable: '--font-instrument-serif',
     subsets: ['latin'],
     weight: '400',
     style: ['normal', 'italic']

@@ -25,7 +25,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
   // Resolve and ensure the resulting path stays inside imageBaseDir.
   const resolved = path.resolve(filepath);
-  if (!resolved.startsWith(imageBaseDir + path.sep) && resolved !== imageBaseDir) {
+  if (!resolved.startsWith(imageBaseDir + path.sep)) {
     return NextResponse.json({ error: 'Invalid filename' }, { status: 400 });
   }
 

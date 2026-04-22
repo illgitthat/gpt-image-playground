@@ -14,7 +14,7 @@ export function ModeToggle({ currentMode, onModeChange }: ModeToggleProps) {
     ];
 
     return (
-        <div role='tablist' aria-label='Mode' className='flex items-baseline gap-3'>
+        <div role='group' aria-label='Mode' className='flex items-baseline gap-3'>
             {modes.map(({ value, label }, i) => {
                 const active = currentMode === value;
                 return (
@@ -26,8 +26,7 @@ export function ModeToggle({ currentMode, onModeChange }: ModeToggleProps) {
                         )}
                         <button
                             type='button'
-                            role='tab'
-                            aria-selected={active}
+                            aria-pressed={active}
                             onClick={() => onModeChange(value)}
                             className={`group relative cursor-pointer font-display text-3xl font-normal leading-none tracking-tight transition-colors focus-visible:outline-none ${
                                 active
