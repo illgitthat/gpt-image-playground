@@ -1,6 +1,6 @@
 'use client';
 
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import * as React from 'react';
 
 type ModeToggleProps = {
     currentMode: 'generate' | 'edit' | 'video';
@@ -8,38 +8,42 @@ type ModeToggleProps = {
 };
 
 export function ModeToggle({ currentMode, onModeChange }: ModeToggleProps) {
+    const modes: Array<{ value: 'generate' | 'edit'; label: string }> = [
+        { value: 'generate', label: 'Generate' },
+        { value: 'edit', label: 'Edit' }
+    ];
+
     return (
-        <Tabs value={currentMode} onValueChange={(value) => onModeChange(value as ModeToggleProps['currentMode'])} className='w-auto'>
-            <TabsList className='grid h-auto grid-cols-2 gap-1 rounded-md border-none bg-transparent p-0'>
-                <TabsTrigger
-                    value='generate'
-                    className={`rounded-md border px-3 py-1 text-sm transition-colors ${
-                        currentMode === 'generate'
-                            ? 'border-white bg-white text-black'
-                            : 'border-dashed border-white/30 bg-transparent text-white/60 hover:border-white/50 hover:text-white/80'
-                    } `}>
-                    Generate
-                </TabsTrigger>
-                <TabsTrigger
-                    value='edit'
-                    className={`rounded-md border px-3 py-1 text-sm transition-colors ${
-                        currentMode === 'edit'
-                            ? 'border-white bg-white text-black'
-                            : 'border-dashed border-white/30 bg-transparent text-white/60 hover:border-white/50 hover:text-white/80'
-                    } `}>
-                    Edit
-                </TabsTrigger>
-                {/* Video tab hidden - feature temporarily disabled
-                <TabsTrigger
-                    value='video'
-                    className={`rounded-md border px-3 py-1 text-sm transition-colors ${currentMode === 'video'
-                            ? 'border-white bg-white text-black'
-                            : 'border-dashed border-white/30 bg-transparent text-white/60 hover:border-white/50 hover:text-white/80'
-                        } `}>
-                    Video
-                </TabsTrigger>
-                */}
-            </TabsList>
-        </Tabs>
+        <div role='group' aria-label='Mode' className='flex items-baseline gap-3'>
+            {modes.map(({ value, label }, i) => {
+                const active = currentMode === value;
+                return (
+                    <React.Fragment key={value}>
+                        {i > 0 && (
+                            <span aria-hidden className='font-display text-3xl leading-none text-border'>
+                                /
+                            </span>
+                        )}
+                        <button
+                            type='button'
+                            aria-pressed={active}
+                            onClick={() => onModeChange(value)}
+                            className={`group relative cursor-pointer rounded-sm font-display text-3xl font-normal leading-none tracking-tight transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
+                                active
+                                    ? 'text-foreground'
+                                    : 'text-muted-foreground/50 hover:text-foreground'
+                            }`}>
+                            {label}
+                            <span
+                                aria-hidden
+                                className={`pointer-events-none absolute -bottom-1.5 left-0 h-[2px] bg-primary transition-all duration-300 ${
+                                    active ? 'w-full' : 'w-0 group-hover:w-full group-focus-visible:w-full'
+                                }`}
+                            />
+                        </button>
+                    </React.Fragment>
+                );
+            })}
+        </div>
     );
 }

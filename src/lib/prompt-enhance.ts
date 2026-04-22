@@ -66,6 +66,42 @@ Rules:
 - Do not invent factual details the user did not imply; stay faithful to their intent.
 - Length target: 80-120 words for detailed control.`;
 
+const surpriseGenerateSystemPrompt = `You are a wildly creative image prompt generator for a text-to-image model. Generate ONE unique, unexpected, and delightful image concept that showcases the model's strengths.
+
+Rules:
+- Be specific and vivid: include subject, environment, materials, lighting, composition, and style/medium.
+- Surprise the user: prefer unexpected combinations, oddly specific concepts, and imaginative juxtapositions over generic ideas.
+- Avoid clichés (sunset over mountains, neon city at night). If you reach for one, twist it into something memorable.
+- Lean into the model's strengths: photorealism, illustration, infographics, UI mockups, logos, product shots, structured visuals, or text rendering. Vary the mode each time.
+- Use concrete craft cues — camera/lens, lighting direction, palette, medium — instead of vague buzzwords like "8K" or "cinematic masterpiece".
+- If text appears in the image, put it in "QUOTES" and specify typography (font style, weight, color, placement).
+- Output ONLY the raw prompt text (no markdown, no headings, no labels, no quotes around the whole prompt, no preamble).
+- Length target: 60-120 words. Single coherent paragraph in natural prose.
+- Keep content family-friendly and avoid real public figures, brands, or political/geopolitical references.
+
+Examples of the kind of output you should produce (do not copy verbatim; vary subject, mode, and style each time):
+- A hand-painted gouache illustration of an elderly librarian cataloguing tiny glass jars of bottled weather on tall wooden shelves, warm afternoon light filtering through stained glass, palette of mustard, teal, cream, and walnut, soft brushwork with visible paper grain, eye-level medium shot, gentle storybook mood.
+- A clean isometric infographic explaining how a sourdough starter ferments over 24 hours, six labeled stages with tiny cross-sections of a glass jar, pastel cream and rye-brown palette, sans-serif labels reading "STARTER STAGES", consistent line weights, generous whitespace, magazine spread layout.
+- A photorealistic macro photograph of a vintage typewriter key embossed with the symbol "@", shallow depth of field, 100mm macro lens, fine dust and tiny scratches visible, dramatic side lighting from a desk lamp, deep amber and graphite tones, resting on a worn leather notebook.`;
+
+const surpriseEditSystemPrompt = `You are a wildly creative image edit prompt generator for a text-to-image model. The user has provided one or more reference images. Generate ONE unique, unexpected, and delightful edit instruction that transforms the image(s) in a memorable way.
+
+Rules:
+- Ground the edit in what is actually visible in the reference image(s). Reference subjects, layout, or context concretely (e.g., "the mug on the left", "the product in Image 1").
+- Surprise the user: propose an edit that is playful, unexpected, or stylistically bold — not a generic "make it brighter" or "remove the background".
+- Be precise about what changes and what stays. Use the pattern "Change only X..." + "Keep everything else the same" when locking invariants helps.
+- Match the original image's lighting, perspective, and material realism unless the edit explicitly asks for a style change.
+- If editing or adding text, include the exact text in "QUOTES" and describe typography (font style, size, color, placement).
+- If multiple images are provided, label them by index (Image 1, Image 2, ...) and describe how they interact.
+- Output ONLY the raw edit instruction (no markdown, no labels, no preamble).
+- Length target: 25-70 words. Concise and actionable.
+- Keep content family-friendly and avoid real public figures, brands, or political references.
+
+Examples (do not copy verbatim; adapt to the actual reference images):
+- "Replace the cluttered office background with a sunlit greenhouse in early autumn, keeping the subject's pose, clothing, and facial features identical and matching the soft side-lighting from camera left. Keep everything else the same."
+- "Restyle the product in Image 1 as a hand-blown ruby-red glass sculpture sitting on polished obsidian, preserving the silhouette and label placement exactly. Add a subtle caustic light pattern. Keep the camera angle and framing unchanged."
+- "Add a tiny origami crane perched on the rim of the coffee mug, casting a soft realistic shadow across the saucer, matching the warm window light and shallow depth of field of the original. Change nothing else."`;
+
 export type PromptEnhanceImagePayload = {
     dataUrl: string;
     alt?: string;
@@ -128,5 +164,62 @@ export const promptEnhanceTemplates = {
     generateSystemPrompt,
     editSystemPrompt,
     videoSystemPrompt: videoWithReferenceSystemPrompt,
-    videoPromptOnlySystemPrompt
+    videoPromptOnlySystemPrompt,
+    surpriseGenerateSystemPrompt,
+    surpriseEditSystemPrompt
 };
+
+export type SurpriseMeMode = 'generate' | 'edit';
+
+export type BuildSurpriseMeOptions = {
+    referenceImages?: PromptEnhanceImagePayload[];
+};
+
+export function buildSurpriseMeInput(
+    mode: SurpriseMeMode,
+    options?: BuildSurpriseMeOptions
+): PromptEnhanceParams {
+    const hasReferenceImages = Array.isArray(options?.referenceImages) && options?.referenceImages.length > 0;
+    const useEditSurprisePrompt = mode === 'edit' && hasReferenceImages;
+    const instructions =
+        useEditSurprisePrompt ? surpriseEditSystemPrompt : surpriseGenerateSystemPrompt;
+
+    const themes = [
+        'photorealistic photography',
+        'editorial illustration',
+        'isometric infographic',
+        'mobile UI mockup',
+        'product hero shot',
+        'minimalist logo design',
+        'hand-drawn storybook scene',
+        'macro still life',
+        'vintage poster design',
+        'architectural render'
+    ];
+    const pickedTheme = themes[Math.floor(Math.random() * themes.length)];
+
+    const seed = useEditSurprisePrompt
+        ? `Surprise me with a fresh, unexpected edit instruction for the reference image(s). Make it concrete and grounded in what is actually shown.`
+        : `Surprise me with a fresh image prompt. Try the mode: ${pickedTheme}. Pick a subject I would not expect.`;
+
+    if (!hasReferenceImages) {
+        return { instructions, input: seed };
+    }
+
+    const content: ResponseInputContent[] = [];
+
+    options!.referenceImages!.forEach((img, index) => {
+        if (img.alt) {
+            content.push({ type: 'input_text', text: `Reference image ${index + 1}: ${img.alt}` });
+        }
+        content.push({
+            type: 'input_image',
+            image_url: img.dataUrl,
+            detail: 'low'
+        });
+    });
+
+    content.push({ type: 'input_text', text: seed });
+
+    return { instructions, input: [{ role: 'user', content }] };
+}
