@@ -790,7 +790,7 @@ export function EditingForm({
                         {editShowMaskEditor && firstImagePreviewUrl && editOriginalImageSize && (
                             <div className='space-y-3 rounded-md border border-border bg-background p-3'>
                                 <p className='text-xs text-muted-foreground'>
-                                    Paint over the areas you want to change. The red areas will be edited; unpainted areas will be preserved.
+                                    Paint over the areas you want to change. The red areas will be edited; unpainted areas will be preserved. Prompting helps more than masks for advanced models.
                                 </p>
                                 <div
                                     className='relative mx-auto w-full overflow-hidden rounded border border-border'
