@@ -160,15 +160,6 @@ export function buildPromptEnhanceInput(
     return { instructions, input: [{ role: 'user', content }] };
 }
 
-export const promptEnhanceTemplates = {
-    generateSystemPrompt,
-    editSystemPrompt,
-    videoSystemPrompt: videoWithReferenceSystemPrompt,
-    videoPromptOnlySystemPrompt,
-    surpriseGenerateSystemPrompt,
-    surpriseEditSystemPrompt
-};
-
 export type SurpriseMeMode = 'generate' | 'edit';
 
 export type BuildSurpriseMeOptions = {

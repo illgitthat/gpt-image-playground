@@ -272,6 +272,18 @@ export async function POST(request: NextRequest) {
                 });
             }
 
+            // Include mask image if provided
+            const maskFile = formData.get('mask');
+            if (maskFile instanceof File) {
+                const maskBuffer = await maskFile.arrayBuffer();
+                const maskBase64 = Buffer.from(maskBuffer).toString('base64');
+                imageContents.push({
+                    type: 'input_image',
+                    image_url: `data:image/png;base64,${maskBase64}`,
+                    detail: 'auto'
+                });
+            }
+
             imageContents.push({ type: 'input_text', text: prompt });
             inputContent = [{ role: 'user', content: imageContents }];
         } else {

@@ -1,16 +1,11 @@
 'use client';
 
 import { Button } from '@/components/ui/button';
+import { ImageLightbox, type LightboxMedia } from '@/components/image-lightbox';
 import { cn } from '@/lib/utils';
 import { Loader2, Send, Grid, Download, Maximize2 } from 'lucide-react';
 import Image from 'next/image';
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogTrigger,
-    DialogTitle,
-} from '@/components/ui/dialog';
+import * as React from 'react';
 
 type ImageInfo = {
     path: string;
@@ -91,6 +86,17 @@ export function ImageOutput({
     const canSendToVideo = !isLoading && isSingleImageView && imageBatch && imageBatch[viewMode] && Boolean(onSendToVideo);
     const canDownload = !isLoading && isSingleImageView && imageBatch && imageBatch[viewMode];
 
+    const [lightboxOpen, setLightboxOpen] = React.useState(false);
+
+    const lightboxMedia: LightboxMedia[] = React.useMemo(() => {
+        if (!imageBatch) return [];
+        return imageBatch.map((img) => ({
+            url: img.path,
+            filename: img.filename,
+            alt: altText,
+        }));
+    }, [imageBatch, altText]);
+
     return (
         <div className='relative flex h-full min-h-[300px] w-full flex-col items-center justify-between gap-4 overflow-hidden rounded-md border border-border bg-card p-5 shadow-[0_1px_0_0_var(--border)]'>
             <div className='absolute right-5 top-4 font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground'>
@@ -169,42 +175,31 @@ export function ImageOutput({
                             ))}
                         </div>
                     ) : imageBatch[viewMode] ? (
-                        <Dialog>
-                            <DialogTrigger asChild>
-                                <button className='relative flex h-full w-full items-center justify-center cursor-zoom-in group focus:outline-none'>
-                                    <Image
-                                        src={imageBatch[viewMode].path}
-                                        alt={altText}
-                                        width={512}
-                                        height={512}
-                                        className='h-auto w-auto max-h-full max-w-full object-contain'
-                                        style={responsiveContainImageStyle}
-                                        unoptimized
-                                        {...eagerImageProps}
-                                    />
-                                    <div className='absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity bg-background/50 rounded p-1 text-foreground backdrop-blur-sm'>
-                                        <Maximize2 className='h-4 w-4' />
-                                    </div>
-                                </button>
-                            </DialogTrigger>
-                            <DialogContent className='max-w-[95vw] max-h-[95vh] w-auto h-auto p-0 border-none bg-transparent shadow-none flex items-center justify-center outline-none sm:max-w-[95vw] [&>button]:bg-background/50 [&>button]:text-foreground [&>button]:hover:bg-background/70 [&>button]:top-4 [&>button]:right-4 [&>button]:h-10 [&>button]:w-10 [&>button]:flex [&>button]:items-center [&>button]:justify-center [&>button]:rounded-full'>
-                                <DialogTitle className='sr-only'>Full resolution view</DialogTitle>
-                                <DialogDescription className='sr-only'>
-                                    A full-size preview of the selected generated image.
-                                </DialogDescription>
-                                <div className='relative flex items-center justify-center w-full h-full'>
-                                    <Image
-                                        src={imageBatch[viewMode].path}
-                                        alt={altText}
-                                        width={2048}
-                                        height={2048}
-                                        className='h-auto w-auto max-w-[90vw] max-h-[90vh] object-contain'
-                                        style={responsiveContainImageStyle}
-                                        unoptimized
-                                    />
+                        <>
+                            <button
+                                className='relative flex h-full w-full items-center justify-center cursor-zoom-in group focus:outline-none'
+                                onClick={() => setLightboxOpen(true)}>
+                                <Image
+                                    src={imageBatch[viewMode].path}
+                                    alt={altText}
+                                    width={512}
+                                    height={512}
+                                    className='h-auto w-auto max-h-full max-w-full object-contain'
+                                    style={responsiveContainImageStyle}
+                                    unoptimized
+                                    {...eagerImageProps}
+                                />
+                                <div className='absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity bg-background/50 rounded p-1 text-foreground backdrop-blur-sm'>
+                                    <Maximize2 className='h-4 w-4' />
                                 </div>
-                            </DialogContent>
-                        </Dialog>
+                            </button>
+                            <ImageLightbox
+                                media={lightboxMedia}
+                                open={lightboxOpen}
+                                onOpenChange={setLightboxOpen}
+                                initialIndex={typeof viewMode === 'number' ? viewMode : 0}
+                            />
+                        </>
                     ) : (
                         <div className='text-center text-muted-foreground/70'>
                             <p>Error displaying image.</p>

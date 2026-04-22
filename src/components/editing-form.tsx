@@ -607,26 +607,6 @@ export function EditingForm({
             </CardHeader>
             <form onSubmit={handleSubmit} className='flex flex-1 flex-col lg:h-full lg:overflow-hidden'>
                 <CardContent className='flex-1 space-y-5 p-4 lg:overflow-y-auto'>
-                    {/* Streaming Previews section hidden by request
-                    <div className='space-y-2'>
-                        <div className='flex items-center gap-2'>
-                            <Label className='text-foreground'>Streaming Previews</Label>
-                            <span className='text-xs text-muted-foreground'>Shows in-progress frames while your image updates (adds a small extra cost).</span>
-                            <Tooltip>
-                                <TooltipTrigger asChild>
-                                    <HelpCircle className='h-4 w-4 cursor-help text-muted-foreground/70 hover:text-muted-foreground' />
-                                </TooltipTrigger>
-                                <TooltipContent className='max-w-[250px]'>
-                                    Each preview image adds ~$0.003 to the cost (100 additional output tokens).
-                                </TooltipContent>
-                            </Tooltip>
-                        </div>
-                        {!streamingAllowed && (
-                            <p className='text-xs text-muted-foreground/80'>Available when editing a single image (n = 1).</p>
-                        )}
-                    </div>
-                    */}
-
                     <div className='space-y-1.5'>
                         <div className='flex items-center justify-between gap-2'>
                             <Label htmlFor='edit-prompt' className='text-foreground'>
@@ -810,8 +790,7 @@ export function EditingForm({
                         {editShowMaskEditor && firstImagePreviewUrl && editOriginalImageSize && (
                             <div className='space-y-3 rounded-md border border-border bg-background p-3'>
                                 <p className='text-xs text-muted-foreground'>
-                                    Draw on the image below to mark areas for editing (drawn areas become transparent in
-                                    the mask).
+                                    Paint over the areas you want to change. The red areas will be edited; unpainted areas will be preserved. Prompting helps more than masks for advanced models.
                                 </p>
                                 <div
                                     className='relative mx-auto w-full overflow-hidden rounded border border-border'
