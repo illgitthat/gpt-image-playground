@@ -12,9 +12,58 @@ const config = {
 const promptEnhanceModel = process.env.PROMPT_ENHANCE_MODEL || 'gpt-5.3-chat';
 const useCustomEndpoint = Boolean(process.env.AZURE_OPENAI_ENDPOINT);
 const modelToUse = config.enhanceDeployment || promptEnhanceModel;
+const ALLOWED_REFERENCE_IMAGE_MIME_TYPES = new Set([
+    'image/png',
+    'image/jpeg',
+    'image/jpg',
+    'image/webp',
+    'image/gif'
+]);
+const MAX_REFERENCE_IMAGE_DATA_URL_LENGTH = 7 * 1024 * 1024;
+const MAX_REFERENCE_IMAGE_BYTES = 5 * 1024 * 1024;
+
+class PayloadTooLargeError extends Error {
+    status: number;
+
+    constructor(message: string) {
+        super(message);
+        this.name = 'PayloadTooLargeError';
+        this.status = 413;
+    }
+}
 
 function sha256(data: string): string {
     return crypto.createHash('sha256').update(data).digest('hex');
+}
+
+function sanitizeReferenceImageDataUrl(dataUrl: string): string | undefined {
+    if (!dataUrl.startsWith('data:image')) {
+        return undefined;
+    }
+
+    if (dataUrl.length > MAX_REFERENCE_IMAGE_DATA_URL_LENGTH) {
+        throw new PayloadTooLargeError('Reference image payload is too large.');
+    }
+
+    const match = /^data:(image\/[a-zA-Z0-9.+-]+);base64,([A-Za-z0-9+/=\r\n]+)$/.exec(dataUrl);
+    if (!match) {
+        return undefined;
+    }
+
+    const mimeType = match[1].toLowerCase();
+    if (!ALLOWED_REFERENCE_IMAGE_MIME_TYPES.has(mimeType)) {
+        return undefined;
+    }
+
+    const base64Payload = match[2].replace(/\s+/g, '');
+    const paddingLength = base64Payload.endsWith('==') ? 2 : base64Payload.endsWith('=') ? 1 : 0;
+    const decodedBytes = Math.floor((base64Payload.length * 3) / 4) - paddingLength;
+
+    if (decodedBytes > MAX_REFERENCE_IMAGE_BYTES) {
+        throw new PayloadTooLargeError('Reference image payload is too large.');
+    }
+
+    return dataUrl;
 }
 
 function sanitizeReferenceImages(input: unknown): PromptEnhanceImagePayload[] {
@@ -27,21 +76,22 @@ function sanitizeReferenceImages(input: unknown): PromptEnhanceImagePayload[] {
         if (sanitized.length >= maxImages) break;
 
         if (typeof candidate === 'string') {
-            if (candidate.startsWith('data:image')) {
-                sanitized.push({ dataUrl: candidate });
+            const dataUrl = sanitizeReferenceImageDataUrl(candidate);
+            if (dataUrl) {
+                sanitized.push({ dataUrl });
             }
             continue;
         }
 
         if (candidate && typeof candidate === 'object') {
             const dataUrl = typeof (candidate as { dataUrl?: string }).dataUrl === 'string'
-                ? (candidate as { dataUrl?: string }).dataUrl
+                ? sanitizeReferenceImageDataUrl((candidate as { dataUrl?: string }).dataUrl as string)
                 : undefined;
             const alt = typeof (candidate as { alt?: string }).alt === 'string'
                 ? (candidate as { alt?: string }).alt
                 : undefined;
 
-            if (dataUrl && dataUrl.startsWith('data:image')) {
+            if (dataUrl) {
                 sanitized.push({ dataUrl, alt });
             }
         }
@@ -54,6 +104,8 @@ export async function POST(request: NextRequest) {
     if (!config.apiKey) {
         return NextResponse.json({ error: 'Server configuration error: API key not found.' }, { status: 500 });
     }
+
+    try {
 
     try {
         const body = await request.json();
@@ -104,5 +156,12 @@ export async function POST(request: NextRequest) {
         }
 
         return NextResponse.json({ error: 'An unexpected error occurred while generating a surprise prompt.' }, { status: 500 });
+    }
+    } catch (error) {
+        if (error instanceof PayloadTooLargeError) {
+            return NextResponse.json({ error: error.message }, { status: error.status });
+        }
+
+        throw error;
     }
 }
