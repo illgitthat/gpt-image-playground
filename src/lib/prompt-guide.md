@@ -1,4 +1,4 @@
-# Gpt-image-2 Prompting Guide
+# gpt-image-2 Prompting Guide
 
 ## 1. Introduction
 
