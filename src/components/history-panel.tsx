@@ -631,7 +631,7 @@ export function HistoryPanel({
                                                             variant='destructive'
                                                             size='sm'
                                                             onClick={onConfirmDeletion}
-                                                            className='bg-destructive text-foreground hover:bg-destructive'>
+                                                            className='bg-destructive text-white hover:bg-destructive'>
                                                             Delete
                                                         </Button>
                                                     </DialogFooter>
