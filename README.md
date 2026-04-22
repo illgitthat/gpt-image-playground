@@ -211,33 +211,32 @@ bun run dev
 
 Open [http://localhost:3000](http://localhost:3000) in your web browser. You should now be able to use the gpt-image-2 Playground!
 
-## 🏭 Production Run (Bun + PM2)
+## 🏭 Production Run (systemd)
 
-1. Build the app:
+1. Install, build, and start the service:
 
 ```bash
+bun install
 bun run build
+sudo cp ./deploy/gpt-image-playground.service /etc/systemd/system/   # or wherever you store it
+sudo systemctl daemon-reload
+sudo systemctl enable gpt-image-playground
+sudo systemctl restart gpt-image-playground
+sudo systemctl status gpt-image-playground
 ```
 
-2. Start in production on port 3000 and keep it alive with PM2 (same port your Cloudflare tunnel uses):
+2. Manage the service:
 
 ```bash
-pm2 start bun --name "gptimage" -- start -- --hostname 0.0.0.0 --port 3000
-```
-
-3. Manage the process:
-
-```bash
-pm2 status
-pm2 logs gptimage
-pm2 restart gptimage
-pm2 stop gptimage
+sudo systemctl status gpt-image-playground
+sudo journalctl -u gpt-image-playground -n 100 --no-pager
+sudo systemctl restart gpt-image-playground
+sudo systemctl stop gpt-image-playground
 ```
 
 Notes:
 
-- Ensure `.env.local` (or exported env vars) is available in the project root so Next.js can read it when PM2 starts the process.
-- If you want PM2 to relaunch on reboot, run `pm2 save` after starting.
+- Ensure `.env.local` (or exported env vars) is available in the project root so Next.js can read it when systemd starts the process.
 
 ## 🤝 Contributing
 
