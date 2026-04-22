@@ -52,7 +52,7 @@ function mergeUsage(total: ApiUsage | undefined, next: ApiUsage | undefined): Ap
         output_tokens: addUsageValue(total?.output_tokens, next.output_tokens),
         total_tokens: addUsageValue(total?.total_tokens, next.total_tokens),
         input_tokens_details:
-            (total?.input_tokens_details || next.input_tokens_details)
+            total?.input_tokens_details || next.input_tokens_details
                 ? {
                       text_tokens: addUsageValue(
                           total?.input_tokens_details?.text_tokens,
