@@ -17,6 +17,7 @@ import {
     type GptImageModel
 } from '@/lib/cost-utils';
 import { db, type ImageRecord } from '@/lib/db';
+import { compressImageForUpload } from '@/lib/image-compress';
 import { useLiveQuery } from 'dexie-react-hooks';
 import * as React from 'react';
 
@@ -294,12 +295,20 @@ export default function HomePage() {
                         event.preventDefault();
                         imageFound = true;
 
-                        const previewUrl = URL.createObjectURL(file);
-
-                        setEditImageFiles((prevFiles) => [...prevFiles, file]);
-                        setEditSourceImagePreviewUrls((prevUrls) => [...prevUrls, previewUrl]);
-
-                        console.log('Pasted image added:', file.name);
+                        // Compress async; previews use the (possibly smaller) processed file.
+                        compressImageForUpload(file)
+                            .then((processed) => {
+                                const previewUrl = URL.createObjectURL(processed);
+                                setEditImageFiles((prevFiles) => [...prevFiles, processed]);
+                                setEditSourceImagePreviewUrls((prevUrls) => [...prevUrls, previewUrl]);
+                                console.log('Pasted image added:', processed.name);
+                            })
+                            .catch((err) => {
+                                console.error('Failed to process pasted image, using original:', err);
+                                const previewUrl = URL.createObjectURL(file);
+                                setEditImageFiles((prevFiles) => [...prevFiles, file]);
+                                setEditSourceImagePreviewUrls((prevUrls) => [...prevUrls, previewUrl]);
+                            });
 
                         break;
                     }

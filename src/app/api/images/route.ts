@@ -286,15 +286,62 @@ export async function POST(request: NextRequest) {
             console.log('Using streaming mode with partial_images:', partialImages);
 
             const encoder = new TextEncoder();
+            const clientAbort = request.signal;
+            let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
             const stream = new ReadableStream({
                 async start(controller) {
+                    let closed = false;
+                    const safeEnqueue = (chunk: Uint8Array) => {
+                        if (closed) return;
+                        try {
+                            controller.enqueue(chunk);
+                        } catch {
+                            // Controller already closed (e.g. client disconnected)
+                            closed = true;
+                        }
+                    };
+                    const safeClose = () => {
+                        if (closed) return;
+                        closed = true;
+                        if (heartbeatInterval) {
+                            clearInterval(heartbeatInterval);
+                            heartbeatInterval = null;
+                        }
+                        try {
+                            controller.close();
+                        } catch {
+                            // ignore
+                        }
+                    };
+
+                    // Send a comment heartbeat every 15s so reverse proxies (nginx, CDN)
+                    // don't buffer or close the connection during long generations.
+                    heartbeatInterval = setInterval(() => {
+                        safeEnqueue(encoder.encode(`: keep-alive ${Date.now()}\n\n`));
+                    }, 15000);
+
+                    // Abort upstream call if the browser disconnects.
+                    const upstreamController = new AbortController();
+                    const onClientAbort = () => {
+                        upstreamController.abort();
+                        safeClose();
+                    };
+                    if (clientAbort.aborted) {
+                        onClientAbort();
+                        return;
+                    }
+                    clientAbort.addEventListener('abort', onClientAbort, { once: true });
+
                     try {
-                        const response = await apiClient.responses.create({
-                            model: 'gpt-5.3-chat',
-                            input: inputContent,
-                            tools: [imageGenTool],
-                            stream: true
-                        });
+                        const response = await apiClient.responses.create(
+                            {
+                                model: 'gpt-5.3-chat',
+                                input: inputContent,
+                                tools: [imageGenTool],
+                                stream: true
+                            },
+                            { signal: upstreamController.signal }
+                        );
 
                         let finalImageB64: string | undefined;
                         let partialImageCount = 0;
@@ -302,12 +349,13 @@ export async function POST(request: NextRequest) {
 
                         // Process stream events
                         for await (const event of response as AsyncIterable<{ type: string; [key: string]: unknown }>) {
+                            if (closed) break;
                             if (event.type === 'response.image_generation_call.partial_image') {
                                 // Partial image event
                                 const partialB64 = event.partial_image_b64 as string | undefined;
                                 const partialIndex = event.partial_image_index as number | undefined;
                                 if (partialB64) {
-                                    controller.enqueue(
+                                    safeEnqueue(
                                         encoder.encode(
                                             sseEvent({
                                                 type: 'partial_image',
@@ -332,6 +380,10 @@ export async function POST(request: NextRequest) {
                             }
                         }
 
+                        if (closed) {
+                            return;
+                        }
+
                         // Save final image and send done event
                         if (finalImageB64) {
                             const filename = `${timestamp}-0.${fileExtension}`;
@@ -342,7 +394,7 @@ export async function POST(request: NextRequest) {
                                 await fs.writeFile(filepath, buffer);
                             }
 
-                            controller.enqueue(
+                            safeEnqueue(
                                 encoder.encode(
                                     sseEvent({
                                         type: 'completed',
@@ -353,7 +405,7 @@ export async function POST(request: NextRequest) {
                                 )
                             );
 
-                            controller.enqueue(
+                            safeEnqueue(
                                 encoder.encode(
                                     sseEvent({
                                         type: 'done',
@@ -372,7 +424,7 @@ export async function POST(request: NextRequest) {
                                 )
                             );
                         } else {
-                            controller.enqueue(
+                            safeEnqueue(
                                 encoder.encode(
                                     sseEvent({
                                         type: 'error',
@@ -382,27 +434,43 @@ export async function POST(request: NextRequest) {
                             );
                         }
 
-                        controller.close();
+                        safeClose();
                     } catch (error) {
-                        console.error('Streaming error:', error);
-                        controller.enqueue(
-                            encoder.encode(
-                                sseEvent({
-                                    type: 'error',
-                                    error: error instanceof Error ? error.message : 'Unknown streaming error'
-                                })
-                            )
-                        );
-                        controller.close();
+                        // Suppress noise from intentional client-disconnect aborts.
+                        const isAbort =
+                            (error instanceof Error && error.name === 'AbortError') ||
+                            upstreamController.signal.aborted;
+                        if (!isAbort) {
+                            console.error('Streaming error:', error);
+                            safeEnqueue(
+                                encoder.encode(
+                                    sseEvent({
+                                        type: 'error',
+                                        error: error instanceof Error ? error.message : 'Unknown streaming error'
+                                    })
+                                )
+                            );
+                        }
+                        safeClose();
+                    } finally {
+                        clientAbort.removeEventListener('abort', onClientAbort);
+                    }
+                },
+                cancel() {
+                    if (heartbeatInterval) {
+                        clearInterval(heartbeatInterval);
+                        heartbeatInterval = null;
                     }
                 }
             });
 
             return new Response(stream, {
                 headers: {
-                    'Content-Type': 'text/event-stream',
-                    'Cache-Control': 'no-cache',
-                    Connection: 'keep-alive'
+                    'Content-Type': 'text/event-stream; charset=utf-8',
+                    'Cache-Control': 'no-cache, no-transform',
+                    Connection: 'keep-alive',
+                    // Disable proxy buffering (nginx, Vercel, etc.) so SSE events flush immediately.
+                    'X-Accel-Buffering': 'no'
                 }
             });
         }

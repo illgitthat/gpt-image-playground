@@ -9,6 +9,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Slider } from '@/components/ui/slider';
 import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { compressImageForUpload } from '@/lib/image-compress';
 import {
     Film,
     ImageUp,
@@ -129,10 +130,18 @@ export function VideoForm({
         }
     }, [referencePreviewUrl, syncReferenceMetadata]);
 
-    const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-        const file = event.target.files?.[0];
-        if (!file) return;
+    const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+        const rawFile = event.target.files?.[0];
+        if (!rawFile) return;
         setUserChoseSize(false);
+
+        let file = rawFile;
+        try {
+            file = await compressImageForUpload(rawFile);
+        } catch (err) {
+            console.warn('Reference image compression failed, using original:', err);
+        }
+
         setReferenceImage(file);
         const objectUrl = URL.createObjectURL(file);
         setReferencePreviewUrl((prev) => {

@@ -11,6 +11,7 @@ import { Slider } from '@/components/ui/slider';
 import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { GPT_IMAGE_MODELS, type GptImageModel } from '@/lib/cost-utils';
+import { compressImagesForUpload } from '@/lib/image-compress';
 import {
     Upload,
     Eraser,
@@ -332,23 +333,29 @@ export function EditingForm({
             setImageAddError(`Only ${availableSlots} slot${availableSlots === 1 ? '' : 's'} left (max ${maxImages}).`);
         }
 
-        setImageFiles((prevFiles) => [...prevFiles, ...filesToAdd]);
+        // Compress + downscale on the client before storing/uploading.
+        // Sends original Files as a fallback if compression isn't possible.
+        compressImagesForUpload(filesToAdd)
+            .then((processedFiles) => {
+                setImageFiles((prevFiles) => [...prevFiles, ...processedFiles]);
 
-        const newFilePromises = filesToAdd.map((file) => {
-            return new Promise<string>((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onloadend = () => resolve(reader.result as string);
-                reader.onerror = () => reject(new Error('Failed to read image file.'));
-                reader.readAsDataURL(file);
-            });
-        });
+                const newFilePromises = processedFiles.map((file) => {
+                    return new Promise<string>((resolve, reject) => {
+                        const reader = new FileReader();
+                        reader.onloadend = () => resolve(reader.result as string);
+                        reader.onerror = () => reject(new Error('Failed to read image file.'));
+                        reader.readAsDataURL(file);
+                    });
+                });
 
-        Promise.all(newFilePromises)
+                return Promise.all(newFilePromises);
+            })
             .then((newUrls) => {
+                if (!newUrls) return;
                 setSourceImagePreviewUrls((prevUrls) => [...prevUrls, ...newUrls]);
             })
             .catch((error) => {
-                console.error('Error reading new image files:', error);
+                console.error('Error processing new image files:', error);
                 setImageAddError('Failed to read one of the selected images.');
             });
     };
