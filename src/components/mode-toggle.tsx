@@ -28,7 +28,7 @@ export function ModeToggle({ currentMode, onModeChange }: ModeToggleProps) {
                             type='button'
                             aria-pressed={active}
                             onClick={() => onModeChange(value)}
-                            className={`group relative cursor-pointer font-display text-3xl font-normal leading-none tracking-tight transition-colors focus-visible:outline-none ${
+                            className={`group relative cursor-pointer rounded-sm font-display text-3xl font-normal leading-none tracking-tight transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
                                 active
                                     ? 'text-foreground'
                                     : 'text-muted-foreground/50 hover:text-foreground'
@@ -37,7 +37,7 @@ export function ModeToggle({ currentMode, onModeChange }: ModeToggleProps) {
                             <span
                                 aria-hidden
                                 className={`pointer-events-none absolute -bottom-1.5 left-0 h-[2px] bg-primary transition-all duration-300 ${
-                                    active ? 'w-full' : 'w-0 group-hover:w-full'
+                                    active ? 'w-full' : 'w-0 group-hover:w-full group-focus-visible:w-full'
                                 }`}
                             />
                         </button>
