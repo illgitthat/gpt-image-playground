@@ -94,7 +94,7 @@ Follow these steps to get the playground running locally.
 ### Prerequisites
 
 - [Node.js](https://nodejs.org/) (Version 20 or later required)
-- [Bun](https://bun.sh/) (recommended) or [npm](https://www.npmjs.com/)
+- [Bun](https://bun.sh/) (Version 1.3 or later recommended)
 
 ### 1. Set Up API Key 🟢
 
@@ -199,8 +199,6 @@ Navigate to the project directory in your terminal and install the necessary pac
 bun install
 ```
 
-> **Note:** You can also use `npm install` if you prefer npm.
-
 ### 3. Run the Development Server 🟢
 
 Start the Next.js development server:
@@ -208,8 +206,6 @@ Start the Next.js development server:
 ```bash
 bun run dev
 ```
-
-> **Note:** You can also use `npm run dev` if you prefer npm.
 
 ### 4. Open the Playground 🟢
 
