@@ -133,15 +133,15 @@ export function GenerationForm({
     enhanceError
 }: GenerationFormProps) {
     const showCompression = outputFormat === 'jpeg' || outputFormat === 'webp';
-    const supportsTransparentBackground = model !== 'gpt-image-2';
+    const locksBackgroundToAuto = model === 'gpt-image-2';
     const [isCopied, setIsCopied] = React.useState(false);
     const [isAdvancedOpen, setIsAdvancedOpen] = React.useState(false);
 
     React.useEffect(() => {
-        if (!supportsTransparentBackground && background === 'transparent') {
+        if (locksBackgroundToAuto && background !== 'auto') {
             setBackground('auto');
         }
-    }, [background, setBackground, supportsTransparentBackground]);
+    }, [background, locksBackgroundToAuto, setBackground]);
 
     const handleCopyPrompt = async () => {
         if (!prompt) return;
@@ -162,7 +162,7 @@ export function GenerationForm({
             size,
             quality,
             output_format: outputFormat,
-            background,
+            background: locksBackgroundToAuto ? 'auto' : background,
             moderation: 'low',
             model
         };
@@ -173,24 +173,27 @@ export function GenerationForm({
     };
 
     return (
-        <Card className='flex w-full flex-col rounded-lg border border-border bg-background lg:h-full lg:overflow-hidden'>
-            <CardHeader className='flex items-start justify-between border-b border-border pb-4'>
-                <div>
-                    <div className='flex items-center'>
-                        <CardTitle className='py-1 text-lg font-medium text-foreground'>Generate Image</CardTitle>
+        <Card className='flex w-full flex-col rounded-md border border-border bg-card shadow-[0_1px_0_0_var(--border)] lg:h-full lg:overflow-hidden'>
+            <CardHeader className='flex items-start justify-between gap-4 border-b border-border px-5 pb-4 pt-5'>
+                <div className='flex flex-col gap-1.5'>
+                    <span className='eyebrow'>I — Compose</span>
+                    <div className='flex items-center gap-2'>
+                        <CardTitle className='font-display text-3xl font-normal leading-none tracking-tight text-foreground'>
+                            Generate <span className='italic text-primary'>image</span>
+                        </CardTitle>
                         {isPasswordRequiredByBackend && (
                             <Button
                                 variant='ghost'
                                 size='icon'
                                 onClick={onOpenPasswordDialog}
-                                className='ml-2 text-muted-foreground hover:text-foreground'
+                                className='h-7 w-7 text-muted-foreground hover:text-foreground'
                                 aria-label='Configure Password'>
-                                {clientPasswordHash ? <Lock className='h-4 w-4' /> : <LockOpen className='h-4 w-4' />}
+                                {clientPasswordHash ? <Lock className='h-3.5 w-3.5' /> : <LockOpen className='h-3.5 w-3.5' />}
                             </Button>
                         )}
                     </div>
-                    <CardDescription className='mt-1 text-muted-foreground'>
-                        Create a new image from a text prompt.
+                    <CardDescription className='text-xs text-muted-foreground'>
+                        Cast a prompt; receive a picture.
                     </CardDescription>
                 </div>
                 <ModeToggle currentMode={currentMode} onModeChange={onModeChange} />
@@ -386,27 +389,25 @@ export function GenerationForm({
                                 </RadioGroup>
                             </div>
 
-                            <div className='space-y-3'>
-                                <Label className='block text-foreground'>Background</Label>
-                                <RadioGroup
-                                    value={background}
-                                    onValueChange={(value) => setBackground(value as GenerationFormData['background'])}
-                                    disabled={isLoading}
-                                    className='flex flex-wrap gap-x-5 gap-y-3'>
-                                    <RadioItemWithIcon value='auto' id='bg-auto' label='Auto' Icon={Sparkles} />
-                                    <RadioItemWithIcon value='opaque' id='bg-opaque' label='Opaque' Icon={BrickWall} />
-                                    <RadioItemWithIcon
-                                        value='transparent'
-                                        id='bg-transparent'
-                                        label='Transparent'
-                                        Icon={Eraser}
-                                        disabled={!supportsTransparentBackground}
-                                    />
-                                </RadioGroup>
-                                {!supportsTransparentBackground && (
-                                    <p className='text-xs text-muted-foreground/80'>Transparent background is unavailable for gpt-image-2.</p>
-                                )}
-                            </div>
+                            {!locksBackgroundToAuto && (
+                                <div className='space-y-3'>
+                                    <Label className='block text-foreground'>Background</Label>
+                                    <RadioGroup
+                                        value={background}
+                                        onValueChange={(value) => setBackground(value as GenerationFormData['background'])}
+                                        disabled={isLoading}
+                                        className='flex flex-wrap gap-x-5 gap-y-3'>
+                                        <RadioItemWithIcon value='auto' id='bg-auto' label='Auto' Icon={Sparkles} />
+                                        <RadioItemWithIcon value='opaque' id='bg-opaque' label='Opaque' Icon={BrickWall} />
+                                        <RadioItemWithIcon
+                                            value='transparent'
+                                            id='bg-transparent'
+                                            label='Transparent'
+                                            Icon={Eraser}
+                                        />
+                                    </RadioGroup>
+                                </div>
+                            )}
 
                             <div className='space-y-3'>
                                 <Label className='block text-foreground'>Output Format</Label>
