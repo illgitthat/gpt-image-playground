@@ -82,20 +82,25 @@ const RadioItemWithIcon = ({
     value,
     id,
     label,
-    Icon
+    Icon,
+    disabled
 }: {
     value: string;
     id: string;
     label: string;
     Icon: React.ElementType;
+    disabled?: boolean;
 }) => (
     <div className='flex items-center space-x-2'>
         <RadioGroupItem
             value={value}
             id={id}
+            disabled={disabled}
             className='border-white/40 text-white data-[state=checked]:border-white data-[state=checked]:text-white'
         />
-        <Label htmlFor={id} className='flex cursor-pointer items-center gap-2 text-base text-white/80'>
+        <Label
+            htmlFor={id}
+            className={`flex items-center gap-2 text-base text-white/80 ${disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}>
             <Icon className='h-5 w-5 text-white/60' />
             {label}
         </Label>
@@ -134,8 +139,15 @@ export function GenerationForm({
     enhanceError
 }: GenerationFormProps) {
     const showCompression = outputFormat === 'jpeg' || outputFormat === 'webp';
+    const supportsTransparentBackground = model !== 'gpt-image-2';
     const [isCopied, setIsCopied] = React.useState(false);
     const [isAdvancedOpen, setIsAdvancedOpen] = React.useState(false);
+
+    React.useEffect(() => {
+        if (!supportsTransparentBackground && background === 'transparent') {
+            setBackground('auto');
+        }
+    }, [background, setBackground, supportsTransparentBackground]);
 
     const handleCopyPrompt = async () => {
         if (!prompt) return;
@@ -341,9 +353,6 @@ export function GenerationForm({
                                     <Label htmlFor='model-select' className='text-white'>
                                         Model
                                     </Label>
-                                    <span className='text-xs text-white/50'>
-                                        Used for generation and cost tracking.
-                                    </span>
                                 </div>
                                 <Select
                                     value={model}
@@ -397,8 +406,12 @@ export function GenerationForm({
                                         id='bg-transparent'
                                         label='Transparent'
                                         Icon={Eraser}
+                                        disabled={!supportsTransparentBackground}
                                     />
                                 </RadioGroup>
+                                {!supportsTransparentBackground && (
+                                    <p className='text-xs text-white/50'>Transparent background is unavailable for gpt-image-2.</p>
+                                )}
                             </div>
 
                             <div className='space-y-3'>
