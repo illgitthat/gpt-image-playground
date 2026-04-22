@@ -14,6 +14,7 @@ import {
     DialogFooter,
     DialogClose
 } from '@/components/ui/dialog';
+import { ImageLightbox, type LightboxMedia } from '@/components/image-lightbox';
 import { GPT_IMAGE_MODELS, getModelRates, type GptImageModel } from '@/lib/cost-utils';
 import { cn } from '@/lib/utils';
 import {
@@ -109,6 +110,25 @@ export function HistoryPanel({
     const [openCostDialogTimestamp, setOpenCostDialogTimestamp] = React.useState<number | null>(null);
     const [isTotalCostDialogOpen, setIsTotalCostDialogOpen] = React.useState(false);
     const [copiedTimestamp, setCopiedTimestamp] = React.useState<number | null>(null);
+
+    // Lightbox state
+    const [lightboxOpen, setLightboxOpen] = React.useState(false);
+    const [lightboxMedia, setLightboxMedia] = React.useState<LightboxMedia[]>([]);
+
+    const openLightbox = (item: HistoryMetadata) => {
+        const mediaItems = item.videos && item.videos.length > 0 ? item.videos : item.images;
+        if (!mediaItems || mediaItems.length === 0) return;
+        const storageMode = item.storageModeUsed || 'fs';
+        const isVideo = item.mode === 'video';
+        const media: LightboxMedia[] = mediaItems.map((m) => ({
+            url: storageMode === 'indexeddb' ? (getImageSrc(m.filename) || '') : `/api/image/${m.filename}`,
+            filename: m.filename,
+            alt: item.prompt || 'Generated image',
+            isVideo,
+        })).filter((m) => m.url !== '');
+        setLightboxMedia(media);
+        setLightboxOpen(true);
+    };
 
     const { totalCost, totalImages } = React.useMemo(() => {
         let cost = 0;
@@ -248,7 +268,7 @@ export function HistoryPanel({
                                 <div key={itemKey} className='flex flex-col'>
                                     <div className='group relative'>
                                         <button
-                                            onClick={() => onSelectImage(item)}
+                                            onClick={() => openLightbox(item)}
                                             className='relative block aspect-square w-full overflow-hidden rounded-t-md border border-border transition-all duration-150 group-hover:border-foreground/40 focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-black focus:outline-none'
                                             aria-label={`View image batch from ${new Date(item.timestamp).toLocaleString()}`}>
                                             {thumbnailUrl ? (
@@ -644,6 +664,13 @@ export function HistoryPanel({
                         })}
                     </div>
                 )}
+
+                {/* Lightbox */}
+                <ImageLightbox
+                    media={lightboxMedia}
+                    open={lightboxOpen}
+                    onOpenChange={setLightboxOpen}
+                />
             </CardContent>
         </Card>
     );
