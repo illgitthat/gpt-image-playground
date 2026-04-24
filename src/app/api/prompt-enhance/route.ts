@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
         const prompt = (body?.prompt as string | undefined)?.trim();
-        const mode = body?.mode as 'generate' | 'edit' | 'video' | undefined;
+        const mode = body?.mode as 'generate' | 'video' | undefined;
         const referenceImages = sanitizeReferenceImages(body?.referenceImages);
         const videoHasReferenceImage = Boolean(body?.videoHasReferenceImage) || referenceImages.length > 0;
         const clientPasswordHash = body?.passwordHash as string | undefined;

@@ -22,7 +22,7 @@ import {
     Check,
     Layers,
     DollarSign,
-    Pencil,
+    ImagePlus,
     Sparkles as SparklesIcon,
     HardDrive,
     Database,
@@ -297,28 +297,13 @@ export function HistoryPanel({
                                                     ?
                                                 </div>
                                             )}
-                                            <div
-                                                className={cn(
-                                                    'pointer-events-none absolute top-1 left-1 z-10 flex items-center gap-1 rounded-full px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] backdrop-blur-sm',
-                                                    item.mode === 'edit'
-                                                        ? 'bg-foreground/85 text-background'
-                                                        : item.mode === 'video'
-                                                          ? 'bg-foreground/70 text-background'
-                                                          : 'bg-primary text-primary-foreground'
-                                                )}>
-                                                {item.mode === 'edit' ? (
-                                                    <Pencil size={12} />
-                                                ) : item.mode === 'video' ? (
+                                            {item.mode === 'video' && (
+                                                <div
+                                                    className='pointer-events-none absolute top-1 left-1 z-10 flex items-center gap-1 rounded-full bg-foreground/70 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-background backdrop-blur-sm'>
                                                     <SparklesIcon size={12} />
-                                                ) : (
-                                                    <SparklesIcon size={12} />
-                                                )}
-                                                {item.mode === 'edit'
-                                                    ? 'Edit'
-                                                    : item.mode === 'video'
-                                                      ? 'Video'
-                                                      : 'Create'}
-                                            </div>
+                                                    Video
+                                                </div>
+                                            )}
                                             {isMultiImage && (
                                                 <div className='pointer-events-none absolute right-1 bottom-1 z-10 flex items-center gap-1 rounded-full bg-background/70 px-1.5 py-0.5 text-[12px] text-foreground'>
                                                     <Layers size={16} />
@@ -350,11 +335,11 @@ export function HistoryPanel({
                                                     onSelectImage(item, { skipModeChange: true });
                                                     onSendToEdit(firstMedia.filename);
                                                 }}
-                                                title='Send to Edit'
-                                                aria-label='Send to Edit'
+                                                title='Use as Reference'
+                                                aria-label='Use as Reference'
                                                 className='absolute inset-x-0 bottom-0 z-20 flex items-center justify-center gap-1.5 border-t border-primary/40 bg-primary/90 px-2 py-1.5 font-mono text-[10px] uppercase tracking-[0.18em] text-primary-foreground opacity-0 backdrop-blur-sm transition-opacity duration-150 group-hover:opacity-100 focus:opacity-100 focus:outline-none'>
-                                                <Pencil size={11} />
-                                                Edit
+                                                <ImagePlus size={11} />
+                                                Reference
                                             </button>
                                         )}
                                         {item.costDetails && (

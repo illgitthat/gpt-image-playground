@@ -1,6 +1,5 @@
 'use client';
 
-import { EditingForm, type EditingFormData } from '@/components/editing-form';
 import { GenerationForm, type GenerationFormData } from '@/components/generation-form';
 import { HistoryPanel } from '@/components/history-panel';
 import { ImageOutput } from '@/components/image-output';
@@ -17,7 +16,6 @@ import {
     type GptImageModel
 } from '@/lib/cost-utils';
 import { db, type ImageRecord } from '@/lib/db';
-import { compressImageForUpload } from '@/lib/image-compress';
 import { useLiveQuery } from 'dexie-react-hooks';
 import * as React from 'react';
 
@@ -47,13 +45,7 @@ export type HistoryMetadata = {
     videoSeconds?: number;
 };
 
-type DrawnPoint = {
-    x: number;
-    y: number;
-    size: number;
-};
-
-const MAX_EDIT_IMAGES = 5;
+const MAX_REFERENCE_IMAGES = 5;
 const MAX_PROMPT_ENHANCE_IMAGES = 3;
 
 const explicitModeClient = process.env.NEXT_PUBLIC_IMAGE_STORAGE_MODE;
@@ -84,18 +76,15 @@ type ApiImageResponseItem = {
 };
 
 export default function HomePage() {
-    const [mode, setMode] = React.useState<'generate' | 'edit' | 'video'>('generate');
+    const [mode, setMode] = React.useState<'generate' | 'video'>('generate');
     const [isPasswordRequiredByBackend, setIsPasswordRequiredByBackend] = React.useState<boolean | null>(null);
     const [clientPasswordHash, setClientPasswordHash] = React.useState<string | null>(null);
     const [isLoading, setIsLoading] = React.useState(false);
     const [isEnhancingGenPrompt, setIsEnhancingGenPrompt] = React.useState(false);
-    const [isEnhancingEditPrompt, setIsEnhancingEditPrompt] = React.useState(false);
     const [isSurprisingGen, setIsSurprisingGen] = React.useState(false);
-    const [isSurprisingEdit, setIsSurprisingEdit] = React.useState(false);
-    const [isSendingToEdit, setIsSendingToEdit] = React.useState(false);
+    const [isSendingToRef, setIsSendingToRef] = React.useState(false);
     const [error, setError] = React.useState<string | null>(null);
     const [genPromptEnhanceError, setGenPromptEnhanceError] = React.useState<string | null>(null);
-    const [editPromptEnhanceError, setEditPromptEnhanceError] = React.useState<string | null>(null);
     const [latestImageBatch, setLatestImageBatch] = React.useState<{ path: string; filename: string }[] | null>(null);
     const [imageOutputView, setImageOutputView] = React.useState<'grid' | number>('grid');
     const [history, setHistory] = React.useState<HistoryMetadata[]>([]);
@@ -103,28 +92,12 @@ export default function HomePage() {
     const [blobUrlCache, setBlobUrlCache] = React.useState<Record<string, string>>({});
     const [isPasswordDialogOpen, setIsPasswordDialogOpen] = React.useState(false);
     const [passwordDialogContext, setPasswordDialogContext] = React.useState<'initial' | 'retry'>('initial');
-    const [lastApiCallArgs, setLastApiCallArgs] = React.useState<[GenerationFormData | EditingFormData] | null>(null);
+    const [lastApiCallArgs, setLastApiCallArgs] = React.useState<[GenerationFormData] | null>(null);
     const [skipDeleteConfirmation, setSkipDeleteConfirmation] = React.useState<boolean>(false);
     const [itemToDeleteConfirm, setItemToDeleteConfirm] = React.useState<HistoryMetadata | null>(null);
     const [dialogCheckboxStateSkipConfirm, setDialogCheckboxStateSkipConfirm] = React.useState<boolean>(false);
 
     const allDbImages = useLiveQuery<ImageRecord[] | undefined>(() => db.images.toArray(), []);
-
-    const [editImageFiles, setEditImageFiles] = React.useState<File[]>([]);
-    const [editSourceImagePreviewUrls, setEditSourceImagePreviewUrls] = React.useState<string[]>([]);
-    const [editPrompt, setEditPrompt] = React.useState('');
-    const [editN, setEditN] = React.useState([1]);
-    const [editSize, setEditSize] = React.useState<EditingFormData['size']>('auto');
-    const [editQuality, setEditQuality] = React.useState<EditingFormData['quality']>('low');
-    const [editBrushSize, setEditBrushSize] = React.useState([20]);
-    const [editShowMaskEditor, setEditShowMaskEditor] = React.useState(false);
-    const [editGeneratedMaskFile, setEditGeneratedMaskFile] = React.useState<File | null>(null);
-    const [editIsMaskSaved, setEditIsMaskSaved] = React.useState(false);
-    const [editOriginalImageSize, setEditOriginalImageSize] = React.useState<{ width: number; height: number } | null>(
-        null
-    );
-    const [editDrawnPoints, setEditDrawnPoints] = React.useState<DrawnPoint[]>([]);
-    const [editMaskPreviewUrl, setEditMaskPreviewUrl] = React.useState<string | null>(null);
 
     const [genModel, setGenModel] = React.useState<GenerationFormData['model']>(DEFAULT_GPT_IMAGE_MODEL);
     const [genPrompt, setGenPrompt] = React.useState('');
@@ -134,8 +107,8 @@ export default function HomePage() {
     const [genOutputFormat, setGenOutputFormat] = React.useState<GenerationFormData['output_format']>('png');
     const [genCompression, setGenCompression] = React.useState([100]);
     const [genBackground, setGenBackground] = React.useState<GenerationFormData['background']>('auto');
-
-    const [editModel, setEditModel] = React.useState<EditingFormData['model']>(DEFAULT_GPT_IMAGE_MODEL);
+    const [genReferenceImages, setGenReferenceImages] = React.useState<File[]>([]);
+    const [genReferenceImagePreviewUrls, setGenReferenceImagePreviewUrls] = React.useState<string[]>([]);
 
     const [videoPrompt, setVideoPrompt] = React.useState('');
     const [videoSize, setVideoSize] = React.useState<'1280x720' | '720x1280'>('1280x720');
@@ -158,9 +131,8 @@ export default function HomePage() {
 
     const isStreamingAllowed = React.useMemo(() => {
         if (mode === 'generate') return genN[0] === 1;
-        if (mode === 'edit') return editN[0] === 1;
         return false;
-    }, [mode, genN, editN]);
+    }, [mode, genN]);
 
     const getImageSrc = React.useCallback(
         (filename: string): string | undefined => {
@@ -201,9 +173,11 @@ export default function HomePage() {
 
     React.useEffect(() => {
         return () => {
-            editSourceImagePreviewUrls.forEach((url) => URL.revokeObjectURL(url));
+            genReferenceImagePreviewUrls.forEach((url) => {
+                if (url.startsWith('blob:')) URL.revokeObjectURL(url);
+            });
         };
-    }, [editSourceImagePreviewUrls]);
+    }, [genReferenceImagePreviewUrls]);
 
     React.useEffect(() => {
         try {
@@ -257,12 +231,6 @@ export default function HomePage() {
     }, [history, isInitialLoad]);
 
     React.useEffect(() => {
-        return () => {
-            editSourceImagePreviewUrls.forEach((url) => URL.revokeObjectURL(url));
-        };
-    }, [editSourceImagePreviewUrls]);
-
-    React.useEffect(() => {
         const storedPref = localStorage.getItem('imageGenSkipDeleteConfirm');
         if (storedPref === 'true') {
             setSkipDeleteConfirmation(true);
@@ -274,57 +242,6 @@ export default function HomePage() {
     React.useEffect(() => {
         localStorage.setItem('imageGenSkipDeleteConfirm', String(skipDeleteConfirmation));
     }, [skipDeleteConfirmation]);
-
-    React.useEffect(() => {
-        const handlePaste = (event: ClipboardEvent) => {
-            if (mode !== 'edit' || !event.clipboardData) {
-                return;
-            }
-
-            if (editImageFiles.length >= MAX_EDIT_IMAGES) {
-                alert(`Cannot paste: Maximum of ${MAX_EDIT_IMAGES} images reached.`);
-                return;
-            }
-
-            const items = event.clipboardData.items;
-            let imageFound = false;
-            for (let i = 0; i < items.length; i++) {
-                if (items[i].type.indexOf('image') !== -1) {
-                    const file = items[i].getAsFile();
-                    if (file) {
-                        event.preventDefault();
-                        imageFound = true;
-
-                        // Compress async; previews use the (possibly smaller) processed file.
-                        compressImageForUpload(file)
-                            .then((processed) => {
-                                const previewUrl = URL.createObjectURL(processed);
-                                setEditImageFiles((prevFiles) => [...prevFiles, processed]);
-                                setEditSourceImagePreviewUrls((prevUrls) => [...prevUrls, previewUrl]);
-                                console.log('Pasted image added:', processed.name);
-                            })
-                            .catch((err) => {
-                                console.error('Failed to process pasted image, using original:', err);
-                                const previewUrl = URL.createObjectURL(file);
-                                setEditImageFiles((prevFiles) => [...prevFiles, file]);
-                                setEditSourceImagePreviewUrls((prevUrls) => [...prevUrls, previewUrl]);
-                            });
-
-                        break;
-                    }
-                }
-            }
-            if (!imageFound) {
-                console.log('Paste event did not contain a recognized image file.');
-            }
-        };
-
-        window.addEventListener('paste', handlePaste);
-
-        return () => {
-            window.removeEventListener('paste', handlePaste);
-        };
-    }, [mode, editImageFiles.length]);
 
     React.useEffect(() => {
         return () => {
@@ -394,21 +311,16 @@ export default function HomePage() {
         });
     }, []);
 
-    const handlePromptEnhance = async (targetMode: 'generate' | 'edit' | 'video') => {
+    const handlePromptEnhance = async (targetMode: 'generate' | 'video') => {
         const isGenerate = targetMode === 'generate';
-        const isEdit = targetMode === 'edit';
-        const targetPrompt = isGenerate ? genPrompt : isEdit ? editPrompt : videoPrompt;
+        const targetPrompt = isGenerate ? genPrompt : videoPrompt;
         const setLoading = isGenerate
             ? setIsEnhancingGenPrompt
-            : isEdit
-              ? setIsEnhancingEditPrompt
-              : setIsEnhancingVideoPrompt;
-        const setPrompt = isGenerate ? setGenPrompt : isEdit ? setEditPrompt : setVideoPrompt;
+            : setIsEnhancingVideoPrompt;
+        const setPrompt = isGenerate ? setGenPrompt : setVideoPrompt;
         const setEnhanceError = isGenerate
             ? setGenPromptEnhanceError
-            : isEdit
-              ? setEditPromptEnhanceError
-              : setVideoPromptEnhanceError;
+            : setVideoPromptEnhanceError;
 
         if (!targetPrompt.trim()) {
             setEnhanceError('Add a prompt first.');
@@ -428,13 +340,13 @@ export default function HomePage() {
         let referenceImagesPayload: { dataUrl: string; alt?: string }[] = [];
         let videoHasReferenceImage = false;
 
-        if (targetMode === 'edit' && editImageFiles.length > 0) {
+        if (targetMode === 'generate' && genReferenceImages.length > 0) {
             try {
-                const filesToSend = editImageFiles.slice(0, MAX_PROMPT_ENHANCE_IMAGES);
+                const filesToSend = genReferenceImages.slice(0, MAX_PROMPT_ENHANCE_IMAGES);
                 referenceImagesPayload = await Promise.all(
                     filesToSend.map(async (file, index) => ({
                         dataUrl: await fileToDataUrl(file),
-                        alt: `Reference image ${index + 1} for edit${file.name ? ` (${file.name})` : ''}`
+                        alt: `Reference image ${index + 1}${file.name ? ` (${file.name})` : ''}`
                     }))
                 );
             } catch (readError) {
@@ -502,11 +414,10 @@ export default function HomePage() {
         }
     };
 
-    const handleSurpriseMe = async (targetMode: 'generate' | 'edit') => {
-        const isGenerate = targetMode === 'generate';
-        const setLoading = isGenerate ? setIsSurprisingGen : setIsSurprisingEdit;
-        const setPrompt = isGenerate ? setGenPrompt : setEditPrompt;
-        const setSurpriseError = isGenerate ? setGenPromptEnhanceError : setEditPromptEnhanceError;
+    const handleSurpriseMe = async () => {
+        const setLoading = setIsSurprisingGen;
+        const setPrompt = setGenPrompt;
+        const setSurpriseError = setGenPromptEnhanceError;
 
         if (isPasswordRequiredByBackend && !clientPasswordHash) {
             setError('Password is required. Please configure the password by clicking the lock icon.');
@@ -520,13 +431,13 @@ export default function HomePage() {
 
         let referenceImagesPayload: { dataUrl: string; alt?: string }[] = [];
 
-        if (targetMode === 'edit' && editImageFiles.length > 0) {
+        if (genReferenceImages.length > 0) {
             try {
-                const filesToSend = editImageFiles.slice(0, MAX_PROMPT_ENHANCE_IMAGES);
+                const filesToSend = genReferenceImages.slice(0, MAX_PROMPT_ENHANCE_IMAGES);
                 referenceImagesPayload = await Promise.all(
                     filesToSend.map(async (file, index) => ({
                         dataUrl: await fileToDataUrl(file),
-                        alt: `Reference image ${index + 1} for edit${file.name ? ` (${file.name})` : ''}`
+                        alt: `Reference image ${index + 1}${file.name ? ` (${file.name})` : ''}`
                     }))
                 );
             } catch (readError) {
@@ -545,7 +456,7 @@ export default function HomePage() {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    mode: targetMode,
+                    mode: 'generate',
                     passwordHash: isPasswordRequiredByBackend ? clientPasswordHash : undefined,
                     referenceImages: referenceImagesPayload.length ? referenceImagesPayload : undefined
                 })
@@ -757,7 +668,7 @@ export default function HomePage() {
         }
     };
 
-    const handleApiCall = async (formData: GenerationFormData | EditingFormData) => {
+    const handleApiCall = async (formData: GenerationFormData) => {
         const startTime = Date.now();
         let durationMs = 0;
 
@@ -777,7 +688,6 @@ export default function HomePage() {
             setIsLoading(false);
             return;
         }
-        apiFormData.append('mode', mode);
 
         // Add streaming parameters when allowed (single-image requests only)
         if (isStreamingAllowed) {
@@ -785,39 +695,27 @@ export default function HomePage() {
             apiFormData.append('partial_images', partialImages.toString());
         }
 
-        if (mode === 'generate') {
-            const genData = formData as GenerationFormData;
-            apiFormData.append('model', genData.model);
-            apiFormData.append('prompt', genData.prompt);
-            apiFormData.append('n', genData.n.toString());
-            apiFormData.append('size', genData.size);
-            apiFormData.append('quality', genData.quality);
-            apiFormData.append('output_format', genData.output_format);
-            if (
-                (genData.output_format === 'jpeg' || genData.output_format === 'webp') &&
-                genData.output_compression !== undefined
-            ) {
-                apiFormData.append('output_compression', genData.output_compression.toString());
-            }
-            apiFormData.append('background', genData.background);
-            apiFormData.append('moderation', genData.moderation);
-        } else {
-            const editData = formData as EditingFormData;
-            apiFormData.append('model', editData.model);
-            apiFormData.append('prompt', editData.prompt);
-            apiFormData.append('n', editData.n.toString());
-            apiFormData.append('size', editData.size);
-            apiFormData.append('quality', editData.quality);
-
-            editData.imageFiles.forEach((file, index) => {
+        apiFormData.append('model', formData.model);
+        apiFormData.append('prompt', formData.prompt);
+        apiFormData.append('n', formData.n.toString());
+        apiFormData.append('size', formData.size);
+        apiFormData.append('quality', formData.quality);
+        apiFormData.append('output_format', formData.output_format);
+        if (
+            (formData.output_format === 'jpeg' || formData.output_format === 'webp') &&
+            formData.output_compression !== undefined
+        ) {
+            apiFormData.append('output_compression', formData.output_compression.toString());
+        }
+        apiFormData.append('background', formData.background);
+        apiFormData.append('moderation', formData.moderation);
+        if (formData.referenceImages && formData.referenceImages.length > 0) {
+            formData.referenceImages.forEach((file, index) => {
                 apiFormData.append(`image_${index}`, file, file.name);
             });
-            if (editData.maskFile) {
-                apiFormData.append('mask', editData.maskFile, editData.maskFile.name);
-            }
         }
 
-        console.log('Sending request to /api/images with mode:', mode, 'streaming:', isStreamingAllowed);
+        console.log('Sending request to /api/images, streaming:', isStreamingAllowed);
 
         try {
             const response = await fetch('/api/images', {
@@ -875,28 +773,6 @@ export default function HomePage() {
                                     console.log(`Streaming completed. Duration: ${durationMs}ms`);
 
                                     if (event.images && event.images.length > 0) {
-                                        let historyQuality: GenerationFormData['quality'] = 'auto';
-                                        let historyBackground: GenerationFormData['background'] = 'auto';
-                                        let historyModeration: GenerationFormData['moderation'] = 'low';
-                                        let historyOutputFormat: GenerationFormData['output_format'] = 'png';
-                                        let historyPrompt: string = '';
-
-                                        if (mode === 'generate') {
-                                            const genData = formData as GenerationFormData;
-                                            historyQuality = genData.quality;
-                                            historyBackground = genData.background;
-                                            historyModeration = 'low';
-                                            historyOutputFormat = genData.output_format;
-                                            historyPrompt = genData.prompt;
-                                        } else {
-                                            const editData = formData as EditingFormData;
-                                            historyQuality = editData.quality;
-                                            historyBackground = 'auto';
-                                            historyModeration = 'low';
-                                            historyOutputFormat = 'png';
-                                            historyPrompt = editData.prompt;
-                                        }
-
                                         const currentModel = formData.model;
                                         const costDetails = calculateApiCost(event.usage, currentModel);
 
@@ -908,12 +784,12 @@ export default function HomePage() {
                                             })),
                                             storageModeUsed: effectiveStorageModeClient,
                                             durationMs: durationMs,
-                                            quality: historyQuality,
-                                            background: historyBackground,
-                                            moderation: historyModeration,
-                                            output_format: historyOutputFormat,
-                                            prompt: historyPrompt,
-                                            mode: mode,
+                                            quality: formData.quality,
+                                            background: formData.background,
+                                            moderation: 'low',
+                                            output_format: formData.output_format,
+                                            prompt: formData.prompt,
+                                            mode: 'generate',
                                             costDetails: costDetails,
                                             model: currentModel
                                         };
@@ -1028,28 +904,6 @@ export default function HomePage() {
                 durationMs = Date.now() - startTime;
                 console.log(`API call successful. Duration: ${durationMs}ms`);
 
-                let historyQuality: GenerationFormData['quality'] = 'auto';
-                let historyBackground: GenerationFormData['background'] = 'auto';
-                let historyModeration: GenerationFormData['moderation'] = 'low';
-                let historyOutputFormat: GenerationFormData['output_format'] = 'png';
-                let historyPrompt: string = '';
-
-                if (mode === 'generate') {
-                    const genData = formData as GenerationFormData;
-                    historyQuality = genData.quality;
-                    historyBackground = genData.background;
-                    historyModeration = 'low';
-                    historyOutputFormat = genData.output_format;
-                    historyPrompt = genData.prompt;
-                } else {
-                    const editData = formData as EditingFormData;
-                    historyQuality = editData.quality;
-                    historyBackground = 'auto';
-                    historyModeration = 'low';
-                    historyOutputFormat = 'png';
-                    historyPrompt = editData.prompt;
-                }
-
                 const currentModel = formData.model;
                 const costDetails = calculateApiCost(result.usage, currentModel);
 
@@ -1059,12 +913,12 @@ export default function HomePage() {
                     images: result.images.map((img: { filename: string }) => ({ filename: img.filename })),
                     storageModeUsed: effectiveStorageModeClient,
                     durationMs: durationMs,
-                    quality: historyQuality,
-                    background: historyBackground,
-                    moderation: historyModeration,
-                    output_format: historyOutputFormat,
-                    prompt: historyPrompt,
-                    mode: mode,
+                    quality: formData.quality,
+                    background: formData.background,
+                    moderation: 'low',
+                    output_format: formData.output_format,
+                    prompt: formData.prompt,
+                    mode: 'generate',
                     costDetails: costDetails,
                     model: currentModel
                 };
@@ -1185,7 +1039,7 @@ export default function HomePage() {
             } else {
                 setLatestImageBatch(validAssets.length > 0 ? validAssets : null);
                 setImageOutputView(validAssets.length > 1 ? 'grid' : 0);
-                if (!options.skipModeChange) setMode(item.mode);
+                if (!options.skipModeChange) setMode(item.mode === 'video' ? 'video' : 'generate');
             }
         });
     };
@@ -1221,50 +1075,45 @@ export default function HomePage() {
         }
     };
 
-    const handleSendToEdit = async (filename: string) => {
-        if (isSendingToEdit) return;
-        setIsSendingToEdit(true);
+    const handleUseAsReference = async (filename: string) => {
+        if (isSendingToRef) return;
+        setIsSendingToRef(true);
         setError(null);
 
-        const alreadyExists = editImageFiles.some((file) => file.name === filename);
-        if (mode === 'edit' && alreadyExists) {
-            console.log(`Image ${filename} already in edit list.`);
-            setIsSendingToEdit(false);
+        const alreadyExists = genReferenceImages.some((file) => file.name === filename);
+        if (alreadyExists) {
+            console.log(`Image ${filename} already in reference list.`);
+            setIsSendingToRef(false);
             return;
         }
 
-        if (mode === 'edit' && editImageFiles.length >= MAX_EDIT_IMAGES) {
-            setError(`Cannot add more than ${MAX_EDIT_IMAGES} images to the edit form.`);
-            setIsSendingToEdit(false);
+        if (genReferenceImages.length >= MAX_REFERENCE_IMAGES) {
+            setError(`Cannot add more than ${MAX_REFERENCE_IMAGES} reference images.`);
+            setIsSendingToRef(false);
             return;
         }
 
-        console.log(`Sending image ${filename} to edit...`);
+        console.log(`Adding image ${filename} as reference...`);
 
         try {
             let blob: Blob | undefined;
             let mimeType: string = 'image/png';
 
             if (effectiveStorageModeClient === 'indexeddb') {
-                console.log(`Fetching blob ${filename} from IndexedDB...`);
-
                 const record = allDbImages?.find((img) => img.filename === filename);
                 if (record?.blob) {
                     blob = record.blob;
                     mimeType = blob.type || mimeType;
-                    console.log(`Found blob ${filename} in IndexedDB.`);
                 } else {
                     throw new Error(`Image ${filename} not found in local database.`);
                 }
             } else {
-                console.log(`Fetching image ${filename} from API...`);
                 const response = await fetch(`/api/image/${filename}`);
                 if (!response.ok) {
                     throw new Error(`Failed to fetch image: ${response.statusText}`);
                 }
                 blob = await response.blob();
                 mimeType = response.headers.get('Content-Type') || mimeType;
-                console.log(`Fetched image ${filename} from API.`);
             }
 
             if (!blob) {
@@ -1272,22 +1121,27 @@ export default function HomePage() {
             }
 
             const newFile = new File([blob], filename, { type: mimeType });
-            const newPreviewUrl = URL.createObjectURL(blob);
 
-            editSourceImagePreviewUrls.forEach((url) => URL.revokeObjectURL(url));
+            // Read data URL for preview
+            const reader = new FileReader();
+            const previewUrl = await new Promise<string>((resolve, reject) => {
+                reader.onloadend = () => resolve(reader.result as string);
+                reader.onerror = () => reject(new Error('Failed to read image'));
+                reader.readAsDataURL(newFile);
+            });
 
-            setEditImageFiles([newFile]);
-            setEditSourceImagePreviewUrls([newPreviewUrl]);
+            setGenReferenceImages((prev) => [...prev, newFile]);
+            setGenReferenceImagePreviewUrls((prev) => [...prev, previewUrl]);
 
-            setMode('edit');
+            setMode('generate');
 
-            console.log(`Successfully set ${filename} in edit form.`);
+            console.log(`Successfully added ${filename} as reference image.`);
         } catch (err: unknown) {
-            console.error('Error sending image to edit:', err);
-            const errorMessage = err instanceof Error ? err.message : 'Failed to send image to edit form.';
+            console.error('Error adding image as reference:', err);
+            const errorMessage = err instanceof Error ? err.message : 'Failed to add image as reference.';
             setError(errorMessage);
         } finally {
-            setIsSendingToEdit(false);
+            setIsSendingToRef(false);
         }
     };
 
@@ -1412,15 +1266,13 @@ export default function HomePage() {
     };
 
     const handleReusePrompt = (prompt: string, targetMode: 'generate' | 'edit' | 'video') => {
-        if (targetMode === 'generate') {
-            setGenPrompt(prompt);
-            setMode('generate');
-        } else if (targetMode === 'edit') {
-            setEditPrompt(prompt);
-            setMode('edit');
-        } else if (targetMode === 'video') {
+        if (targetMode === 'video') {
             setVideoPrompt(prompt);
             setMode('video');
+        } else {
+            // Both 'generate' and legacy 'edit' history entries go to generate
+            setGenPrompt(prompt);
+            setMode('generate');
         }
     };
 
@@ -1455,8 +1307,6 @@ export default function HomePage() {
                             <GenerationForm
                                 onSubmit={handleApiCall}
                                 isLoading={isLoading}
-                                currentMode={mode}
-                                onModeChange={setMode}
                                 isPasswordRequiredByBackend={isPasswordRequiredByBackend}
                                 clientPasswordHash={clientPasswordHash}
                                 onOpenPasswordDialog={handleOpenPasswordDialog}
@@ -1476,58 +1326,17 @@ export default function HomePage() {
                                 setCompression={setGenCompression}
                                 background={genBackground}
                                 setBackground={setGenBackground}
+                                referenceImages={genReferenceImages}
+                                referenceImagePreviewUrls={genReferenceImagePreviewUrls}
+                                setReferenceImages={setGenReferenceImages}
+                                setReferenceImagePreviewUrls={setGenReferenceImagePreviewUrls}
+                                maxReferenceImages={MAX_REFERENCE_IMAGES}
                                 streamingAllowed={genN[0] === 1}
                                 onEnhancePrompt={() => handlePromptEnhance('generate')}
                                 isEnhancingPrompt={isEnhancingGenPrompt}
                                 enhanceError={genPromptEnhanceError}
-                                onSurpriseMe={() => handleSurpriseMe('generate')}
+                                onSurpriseMe={handleSurpriseMe}
                                 isSurprising={isSurprisingGen}
-                            />
-                        </div>
-                        <div className={mode === 'edit' ? 'block h-full w-full' : 'hidden'}>
-                            <EditingForm
-                                onSubmit={handleApiCall}
-                                isLoading={isLoading || isSendingToEdit}
-                                currentMode={mode}
-                                onModeChange={setMode}
-                                isPasswordRequiredByBackend={isPasswordRequiredByBackend}
-                                clientPasswordHash={clientPasswordHash}
-                                onOpenPasswordDialog={handleOpenPasswordDialog}
-                                editModel={editModel}
-                                setEditModel={setEditModel}
-                                imageFiles={editImageFiles}
-                                sourceImagePreviewUrls={editSourceImagePreviewUrls}
-                                setImageFiles={setEditImageFiles}
-                                setSourceImagePreviewUrls={setEditSourceImagePreviewUrls}
-                                maxImages={MAX_EDIT_IMAGES}
-                                editPrompt={editPrompt}
-                                setEditPrompt={setEditPrompt}
-                                editN={editN}
-                                setEditN={setEditN}
-                                editSize={editSize}
-                                setEditSize={setEditSize}
-                                editQuality={editQuality}
-                                setEditQuality={setEditQuality}
-                                editBrushSize={editBrushSize}
-                                setEditBrushSize={setEditBrushSize}
-                                editShowMaskEditor={editShowMaskEditor}
-                                setEditShowMaskEditor={setEditShowMaskEditor}
-                                editGeneratedMaskFile={editGeneratedMaskFile}
-                                setEditGeneratedMaskFile={setEditGeneratedMaskFile}
-                                editIsMaskSaved={editIsMaskSaved}
-                                setEditIsMaskSaved={setEditIsMaskSaved}
-                                editOriginalImageSize={editOriginalImageSize}
-                                setEditOriginalImageSize={setEditOriginalImageSize}
-                                editDrawnPoints={editDrawnPoints}
-                                setEditDrawnPoints={setEditDrawnPoints}
-                                editMaskPreviewUrl={editMaskPreviewUrl}
-                                setEditMaskPreviewUrl={setEditMaskPreviewUrl}
-                                streamingAllowed={editN[0] === 1}
-                                onEnhancePrompt={() => handlePromptEnhance('edit')}
-                                isEnhancingPrompt={isEnhancingEditPrompt}
-                                enhanceError={editPromptEnhanceError}
-                                onSurpriseMe={() => handleSurpriseMe('edit')}
-                                isSurprising={isSurprisingEdit}
                             />
                         </div>
                         {/* VideoForm hidden - feature temporarily disabled
@@ -1580,10 +1389,9 @@ export default function HomePage() {
                             viewMode={imageOutputView}
                             onViewChange={setImageOutputView}
                             altText='Generated image output'
-                            isLoading={isLoading || isSendingToEdit}
-                            onSendToEdit={handleSendToEdit}
-                            currentMode={mode}
-                            baseImagePreviewUrl={editSourceImagePreviewUrls[0] || null}
+                            isLoading={isLoading || isSendingToRef}
+                            onSendToEdit={handleUseAsReference}
+                            baseImagePreviewUrl={genReferenceImagePreviewUrls[0] || null}
                             streamingPreviewImages={streamingPreviewImages}
                             // onSendToVideo={handleSendToVideo} // Disabled - video feature temporarily hidden
                         />
@@ -1604,7 +1412,7 @@ export default function HomePage() {
                         deletePreferenceDialogValue={dialogCheckboxStateSkipConfirm}
                         onDeletePreferenceDialogChange={setDialogCheckboxStateSkipConfirm}
                         onReusePrompt={handleReusePrompt}
-                        onSendToEdit={handleSendToEdit}
+                        onSendToEdit={handleUseAsReference}
                     />
                 </div>
             </div>

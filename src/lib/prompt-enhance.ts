@@ -121,20 +121,22 @@ export type PromptEnhanceParams = {
 };
 
 export function buildPromptEnhanceInput(
-    mode: 'generate' | 'edit' | 'video',
+    mode: 'generate' | 'video',
     prompt: string,
     options?: BuildPromptEnhanceOptions
 ): PromptEnhanceParams {
-    const instructions =
-        mode === 'edit'
-            ? editSystemPrompt
-            : mode === 'video'
-                ? options?.videoHasReferenceImage
-                    ? videoWithReferenceSystemPrompt
-                    : videoPromptOnlySystemPrompt
-                : generateSystemPrompt;
-
     const hasReferenceImages = Array.isArray(options?.referenceImages) && options?.referenceImages.length > 0;
+
+    // When reference images are provided in generate mode, use the edit system prompt
+    // since it's optimized for describing modifications to existing images
+    const instructions =
+        mode === 'video'
+            ? options?.videoHasReferenceImage
+                ? videoWithReferenceSystemPrompt
+                : videoPromptOnlySystemPrompt
+            : hasReferenceImages
+                ? editSystemPrompt
+                : generateSystemPrompt;
 
     // Simple string input when no reference images
     if (!hasReferenceImages) {
@@ -160,7 +162,7 @@ export function buildPromptEnhanceInput(
     return { instructions, input: [{ role: 'user', content }] };
 }
 
-export type SurpriseMeMode = 'generate' | 'edit';
+export type SurpriseMeMode = 'generate';
 
 export type BuildSurpriseMeOptions = {
     referenceImages?: PromptEnhanceImagePayload[];
@@ -171,9 +173,8 @@ export function buildSurpriseMeInput(
     options?: BuildSurpriseMeOptions
 ): PromptEnhanceParams {
     const hasReferenceImages = Array.isArray(options?.referenceImages) && options?.referenceImages.length > 0;
-    const useEditSurprisePrompt = mode === 'edit' && hasReferenceImages;
     const instructions =
-        useEditSurprisePrompt ? surpriseEditSystemPrompt : surpriseGenerateSystemPrompt;
+        hasReferenceImages ? surpriseEditSystemPrompt : surpriseGenerateSystemPrompt;
 
     const themes = [
         'photorealistic photography',
@@ -189,7 +190,7 @@ export function buildSurpriseMeInput(
     ];
     const pickedTheme = themes[Math.floor(Math.random() * themes.length)];
 
-    const seed = useEditSurprisePrompt
+    const seed = hasReferenceImages
         ? `Surprise me with a fresh, unexpected edit instruction for the reference image(s). Make it concrete and grounded in what is actually shown.`
         : `Surprise me with a fresh image prompt. Try the mode: ${pickedTheme}. Pick a subject I would not expect.`;
 

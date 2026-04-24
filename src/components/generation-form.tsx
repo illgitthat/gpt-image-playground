@@ -1,8 +1,7 @@
 'use client';
 
-import { ModeToggle } from '@/components/mode-toggle';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardFooter } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -10,6 +9,7 @@ import { Slider } from '@/components/ui/slider';
 import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { GPT_IMAGE_MODELS, type GptImageModel } from '@/lib/cost-utils';
+import { compressImagesForUpload } from '@/lib/image-compress';
 import {
     Square,
     RectangleHorizontal,
@@ -27,8 +27,13 @@ import {
     ChevronDown,
     ChevronRight,
     Settings2,
-    Wand2
+    Wand2,
+    Upload,
+    X,
+    ClipboardPaste,
+    ImagePlus
 } from 'lucide-react';
+import Image from 'next/image';
 import * as React from 'react';
 
 export type GenerationFormData = {
@@ -41,13 +46,12 @@ export type GenerationFormData = {
     background: 'transparent' | 'opaque' | 'auto';
     moderation: 'low';
     model: GptImageModel;
+    referenceImages: File[];
 };
 
 type GenerationFormProps = {
     onSubmit: (data: GenerationFormData) => void;
     isLoading: boolean;
-    currentMode: 'generate' | 'edit' | 'video';
-    onModeChange: (mode: 'generate' | 'edit' | 'video') => void;
     isPasswordRequiredByBackend: boolean | null;
     clientPasswordHash: string | null;
     onOpenPasswordDialog: () => void;
@@ -67,6 +71,11 @@ type GenerationFormProps = {
     setCompression: React.Dispatch<React.SetStateAction<number[]>>;
     background: GenerationFormData['background'];
     setBackground: React.Dispatch<React.SetStateAction<GenerationFormData['background']>>;
+    referenceImages: File[];
+    referenceImagePreviewUrls: string[];
+    setReferenceImages: React.Dispatch<React.SetStateAction<File[]>>;
+    setReferenceImagePreviewUrls: React.Dispatch<React.SetStateAction<string[]>>;
+    maxReferenceImages: number;
     streamingAllowed: boolean;
     onEnhancePrompt: () => void;
     isEnhancingPrompt: boolean;
@@ -107,8 +116,6 @@ const RadioItemWithIcon = ({
 export function GenerationForm({
     onSubmit,
     isLoading,
-    currentMode,
-    onModeChange,
     isPasswordRequiredByBackend,
     clientPasswordHash,
     onOpenPasswordDialog,
@@ -128,6 +135,11 @@ export function GenerationForm({
     setCompression,
     background,
     setBackground,
+    referenceImages,
+    referenceImagePreviewUrls,
+    setReferenceImages,
+    setReferenceImagePreviewUrls,
+    maxReferenceImages,
     streamingAllowed,
     onEnhancePrompt,
     isEnhancingPrompt,
@@ -138,12 +150,94 @@ export function GenerationForm({
     const showCompression = outputFormat === 'jpeg' || outputFormat === 'webp';
     const locksBackgroundToAuto = model === 'gpt-image-2';
     const [isAdvancedOpen, setIsAdvancedOpen] = React.useState(false);
+    const [imageAddError, setImageAddError] = React.useState<string | null>(null);
+    const [isPastingImage, setIsPastingImage] = React.useState(false);
 
     React.useEffect(() => {
         if (locksBackgroundToAuto && background !== 'auto') {
             setBackground('auto');
         }
     }, [background, locksBackgroundToAuto, setBackground]);
+
+    const addReferenceImages = (files: File[]) => {
+        if (files.length === 0) return;
+        setImageAddError(null);
+        const availableSlots = maxReferenceImages - referenceImages.length;
+        if (availableSlots <= 0) {
+            setImageAddError(`You can only select up to ${maxReferenceImages} images.`);
+            return;
+        }
+        const filesToAdd = files.slice(0, availableSlots);
+        if (files.length > filesToAdd.length) {
+            setImageAddError(`Only ${availableSlots} slot${availableSlots === 1 ? '' : 's'} left (max ${maxReferenceImages}).`);
+        }
+        compressImagesForUpload(filesToAdd)
+            .then((processedFiles) => {
+                setReferenceImages((prev) => [...prev, ...processedFiles]);
+                return Promise.all(
+                    processedFiles.map(
+                        (file) =>
+                            new Promise<string>((resolve, reject) => {
+                                const reader = new FileReader();
+                                reader.onloadend = () => resolve(reader.result as string);
+                                reader.onerror = () => reject(new Error('Failed to read image file.'));
+                                reader.readAsDataURL(file);
+                            })
+                    )
+                );
+            })
+            .then((newUrls) => {
+                if (newUrls) setReferenceImagePreviewUrls((prev) => [...prev, ...newUrls]);
+            })
+            .catch(() => setImageAddError('Failed to read one of the selected images.'));
+    };
+
+    const handleRefImageFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+        if (event.target.files) {
+            addReferenceImages(Array.from(event.target.files));
+            event.target.value = '';
+        }
+    };
+
+    const handleRefPasteFromClipboard = async () => {
+        if (!navigator.clipboard || typeof navigator.clipboard.read !== 'function') {
+            setImageAddError('Clipboard paste is not supported in this browser.');
+            return;
+        }
+        if (referenceImages.length >= maxReferenceImages) {
+            setImageAddError(`You can only select up to ${maxReferenceImages} images.`);
+            return;
+        }
+        setIsPastingImage(true);
+        setImageAddError(null);
+        try {
+            const items = await navigator.clipboard.read();
+            const imageBlobs: Blob[] = [];
+            for (const item of items) {
+                for (const type of item.types) {
+                    if (type.startsWith('image/')) {
+                        imageBlobs.push(await item.getType(type));
+                        break;
+                    }
+                }
+            }
+            if (imageBlobs.length === 0) throw new Error('Clipboard does not contain an image.');
+            const files = imageBlobs.map((blob, i) => {
+                const ext = blob.type.split('/')[1] || 'png';
+                return new File([blob], `pasted-image-${Date.now()}-${i}.${ext}`, { type: blob.type });
+            });
+            addReferenceImages(files);
+        } catch (err: unknown) {
+            setImageAddError(err instanceof Error ? err.message : 'Unable to read image from clipboard.');
+        } finally {
+            setIsPastingImage(false);
+        }
+    };
+
+    const handleRemoveRefImage = (indexToRemove: number) => {
+        setReferenceImages((prev) => prev.filter((_, i) => i !== indexToRemove));
+        setReferenceImagePreviewUrls((prev) => prev.filter((_, i) => i !== indexToRemove));
+    };
 
     const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
         event.preventDefault();
@@ -155,7 +249,8 @@ export function GenerationForm({
             output_format: outputFormat,
             background: locksBackgroundToAuto ? 'auto' : background,
             moderation: 'low',
-            model
+            model,
+            referenceImages
         };
         if (showCompression) {
             formData.output_compression = compression[0];
@@ -165,19 +260,6 @@ export function GenerationForm({
 
     return (
         <Card className='flex w-full flex-col rounded-md border border-border bg-card shadow-[0_1px_0_0_var(--border)] lg:h-full lg:overflow-hidden'>
-            <CardHeader className='flex items-center justify-between gap-4 border-b border-border px-5 pb-4 pt-5'>
-                <ModeToggle currentMode={currentMode} onModeChange={onModeChange} />
-                {isPasswordRequiredByBackend && (
-                    <Button
-                        variant='ghost'
-                        size='icon'
-                        onClick={onOpenPasswordDialog}
-                        className='h-7 w-7 text-muted-foreground hover:text-foreground'
-                        aria-label='Configure Password'>
-                        {clientPasswordHash ? <Lock className='h-3.5 w-3.5' /> : <LockOpen className='h-3.5 w-3.5' />}
-                    </Button>
-                )}
-            </CardHeader>
             <form onSubmit={handleSubmit} className='flex flex-1 flex-col lg:h-full lg:overflow-hidden'>
                 <CardContent className='flex-1 space-y-5 p-4 lg:overflow-y-auto'>
                     <div className='space-y-1.5'>
@@ -186,6 +268,17 @@ export function GenerationForm({
                                 Prompt
                             </Label>
                             <div className='flex items-center gap-2'>
+                                {isPasswordRequiredByBackend && (
+                                    <Button
+                                        type='button'
+                                        variant='ghost'
+                                        size='icon'
+                                        onClick={onOpenPasswordDialog}
+                                        className='h-7 w-7 text-muted-foreground hover:text-foreground'
+                                        aria-label='Configure Password'>
+                                        {clientPasswordHash ? <Lock className='h-3.5 w-3.5' /> : <LockOpen className='h-3.5 w-3.5' />}
+                                    </Button>
+                                )}
                                 {enhanceError && <span className='text-xs text-destructive'>{enhanceError}</span>}
                                 <Tooltip>
                                     <TooltipTrigger asChild>
@@ -243,6 +336,98 @@ export function GenerationForm({
                                 !prompt && !isLoading ? 'attention-pulse' : 'border-border'
                             }`}
                         />
+                    </div>
+
+                    <div className='space-y-2'>
+                        <div className='flex items-center justify-between gap-2'>
+                            <Label className='text-foreground'>
+                                Reference Images
+                                <span className='ml-1 text-xs font-normal text-muted-foreground'>(optional)</span>
+                            </Label>
+                            {referenceImages.length > 0 && (
+                                <span className='text-xs text-muted-foreground'>
+                                    {referenceImages.length}/{maxReferenceImages}
+                                </span>
+                            )}
+                        </div>
+                        {referenceImages.length === 0 ? (
+                            <div className='flex gap-2'>
+                                <Label
+                                    htmlFor='gen-ref-image-input'
+                                    className='flex h-10 flex-1 cursor-pointer items-center justify-center gap-2 rounded-md border border-dashed border-border bg-background px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted/30 hover:text-foreground'>
+                                    <ImagePlus className='h-4 w-4' />
+                                    <span>Add reference image(s)</span>
+                                </Label>
+                                <Button
+                                    type='button'
+                                    variant='outline'
+                                    size='icon'
+                                    onClick={handleRefPasteFromClipboard}
+                                    disabled={isLoading || isPastingImage}
+                                    className='h-10 w-10 shrink-0 border-border text-muted-foreground hover:bg-muted/60 hover:text-foreground'>
+                                    {isPastingImage ? (
+                                        <Loader2 className='h-4 w-4 animate-spin' />
+                                    ) : (
+                                        <ClipboardPaste className='h-4 w-4' />
+                                    )}
+                                </Button>
+                            </div>
+                        ) : (
+                            <div className='space-y-2'>
+                                <div className='flex flex-wrap gap-2'>
+                                    {referenceImagePreviewUrls.map((url, index) => (
+                                        <div key={index} className='group relative'>
+                                            <Image
+                                                src={url}
+                                                alt={`Reference ${index + 1}`}
+                                                width={64}
+                                                height={64}
+                                                className='h-16 w-16 rounded-md border border-border object-cover'
+                                            />
+                                            <button
+                                                type='button'
+                                                onClick={() => handleRemoveRefImage(index)}
+                                                className='absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-sm transition-colors hover:bg-destructive hover:text-destructive-foreground'>
+                                                <X className='h-3 w-3' />
+                                            </button>
+                                        </div>
+                                    ))}
+                                    {referenceImages.length < maxReferenceImages && (
+                                        <Label
+                                            htmlFor='gen-ref-image-input'
+                                            className='flex h-16 w-16 cursor-pointer items-center justify-center rounded-md border border-dashed border-border bg-background text-muted-foreground transition-colors hover:bg-muted/30 hover:text-foreground'>
+                                            <ImagePlus className='h-5 w-5' />
+                                        </Label>
+                                    )}
+                                </div>
+                                <div className='flex gap-2'>
+                                    <Button
+                                        type='button'
+                                        variant='outline'
+                                        size='sm'
+                                        onClick={handleRefPasteFromClipboard}
+                                        disabled={isLoading || isPastingImage || referenceImages.length >= maxReferenceImages}
+                                        className='h-7 border-border text-xs text-muted-foreground hover:bg-muted/60 hover:text-foreground'>
+                                        {isPastingImage ? (
+                                            <Loader2 className='mr-1.5 h-3 w-3 animate-spin' />
+                                        ) : (
+                                            <ClipboardPaste className='mr-1.5 h-3 w-3' />
+                                        )}
+                                        Paste
+                                    </Button>
+                                </div>
+                            </div>
+                        )}
+                        <input
+                            id='gen-ref-image-input'
+                            type='file'
+                            accept='image/png, image/jpeg, image/webp'
+                            multiple
+                            onChange={handleRefImageFileChange}
+                            disabled={isLoading || referenceImages.length >= maxReferenceImages}
+                            className='sr-only'
+                        />
+                        {imageAddError && <p className='text-xs text-destructive'>{imageAddError}</p>}
                     </div>
 
                     <div className='space-y-2'>
