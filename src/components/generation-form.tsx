@@ -2,6 +2,7 @@
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter } from '@/components/ui/card';
+import { ImageLightbox, type LightboxMedia } from '@/components/image-lightbox';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -152,6 +153,54 @@ export function GenerationForm({
     const [isAdvancedOpen, setIsAdvancedOpen] = React.useState(false);
     const [imageAddError, setImageAddError] = React.useState<string | null>(null);
     const [isPastingImage, setIsPastingImage] = React.useState(false);
+    const [isDraggingOver, setIsDraggingOver] = React.useState(false);
+    const dragCounterRef = React.useRef(0);
+    const [lightboxOpen, setLightboxOpen] = React.useState(false);
+    const [lightboxIndex, setLightboxIndex] = React.useState(0);
+
+    const lightboxMedia: LightboxMedia[] = React.useMemo(
+        () =>
+            referenceImagePreviewUrls.map((url, i) => ({
+                url,
+                alt: `Reference image ${i + 1}`,
+            })),
+        [referenceImagePreviewUrls]
+    );
+
+    const handleDragEnter = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dragCounterRef.current++;
+        if (e.dataTransfer.types.includes('Files')) {
+            setIsDraggingOver(true);
+        }
+    };
+
+    const handleDragLeave = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dragCounterRef.current--;
+        if (dragCounterRef.current === 0) {
+            setIsDraggingOver(false);
+        }
+    };
+
+    const handleDragOver = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+    };
+
+    const handleDrop = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDraggingOver(false);
+        dragCounterRef.current = 0;
+        if (isLoading || referenceImages.length >= maxReferenceImages) return;
+        const files = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith('image/'));
+        if (files.length > 0) {
+            addReferenceImages(files);
+        }
+    };
 
     React.useEffect(() => {
         if (locksBackgroundToAuto && background !== 'auto') {
@@ -338,7 +387,12 @@ export function GenerationForm({
                         />
                     </div>
 
-                    <div className='space-y-2'>
+                    <div
+                        className='space-y-2'
+                        onDragEnter={handleDragEnter}
+                        onDragLeave={handleDragLeave}
+                        onDragOver={handleDragOver}
+                        onDrop={handleDrop}>
                         <div className='flex items-center justify-between gap-2'>
                             <Label className='text-foreground'>
                                 Reference Images
@@ -351,39 +405,34 @@ export function GenerationForm({
                             )}
                         </div>
                         {referenceImages.length === 0 ? (
-                            <div className='flex gap-2'>
-                                <Label
-                                    htmlFor='gen-ref-image-input'
-                                    className='flex h-10 flex-1 cursor-pointer items-center justify-center gap-2 rounded-md border border-dashed border-border bg-background px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted/30 hover:text-foreground'>
-                                    <ImagePlus className='h-4 w-4' />
-                                    <span>Add reference image(s)</span>
-                                </Label>
-                                <Button
-                                    type='button'
-                                    variant='outline'
-                                    size='icon'
-                                    onClick={handleRefPasteFromClipboard}
-                                    disabled={isLoading || isPastingImage}
-                                    className='h-10 w-10 shrink-0 border-border text-muted-foreground hover:bg-muted/60 hover:text-foreground'>
-                                    {isPastingImage ? (
-                                        <Loader2 className='h-4 w-4 animate-spin' />
-                                    ) : (
-                                        <ClipboardPaste className='h-4 w-4' />
-                                    )}
-                                </Button>
-                            </div>
+                            <Label
+                                htmlFor='gen-ref-image-input'
+                                className={`flex min-h-[80px] w-full cursor-pointer flex-col items-center justify-center gap-2 rounded-md border-2 border-dashed bg-background px-3 py-4 text-sm transition-colors ${
+                                    isDraggingOver
+                                        ? 'border-primary bg-primary/5 text-primary'
+                                        : 'border-border text-muted-foreground hover:bg-muted/30 hover:text-foreground'
+                                }`}>
+                                <ImagePlus className='h-5 w-5' />
+                                <span>{isDraggingOver ? 'Drop images here' : 'Drop images here or click to browse'}</span>
+                                <span className='text-xs text-muted-foreground/70'>PNG, JPEG, WebP</span>
+                            </Label>
                         ) : (
-                            <div className='space-y-2'>
+                            <div className={`space-y-2 rounded-md p-1 transition-colors ${isDraggingOver ? 'bg-primary/5 ring-2 ring-primary ring-offset-1 ring-offset-background' : ''}`}>
                                 <div className='flex flex-wrap gap-2'>
                                     {referenceImagePreviewUrls.map((url, index) => (
                                         <div key={index} className='group relative'>
-                                            <Image
-                                                src={url}
-                                                alt={`Reference ${index + 1}`}
-                                                width={64}
-                                                height={64}
-                                                className='h-16 w-16 rounded-md border border-border object-cover'
-                                            />
+                                            <button
+                                                type='button'
+                                                onClick={() => { setLightboxIndex(index); setLightboxOpen(true); }}
+                                                className='cursor-zoom-in rounded-md focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1'>
+                                                <Image
+                                                    src={url}
+                                                    alt={`Reference ${index + 1}`}
+                                                    width={64}
+                                                    height={64}
+                                                    className='h-16 w-16 rounded-md border border-border object-cover'
+                                                />
+                                            </button>
                                             <button
                                                 type='button'
                                                 onClick={() => handleRemoveRefImage(index)}
@@ -395,7 +444,11 @@ export function GenerationForm({
                                     {referenceImages.length < maxReferenceImages && (
                                         <Label
                                             htmlFor='gen-ref-image-input'
-                                            className='flex h-16 w-16 cursor-pointer items-center justify-center rounded-md border border-dashed border-border bg-background text-muted-foreground transition-colors hover:bg-muted/30 hover:text-foreground'>
+                                            className={`flex h-16 w-16 cursor-pointer items-center justify-center rounded-md border border-dashed bg-background transition-colors ${
+                                                isDraggingOver
+                                                    ? 'border-primary text-primary'
+                                                    : 'border-border text-muted-foreground hover:bg-muted/30 hover:text-foreground'
+                                            }`}>
                                             <ImagePlus className='h-5 w-5' />
                                         </Label>
                                     )}
@@ -604,6 +657,12 @@ export function GenerationForm({
                     </Button>
                 </CardFooter>
             </form>
+            <ImageLightbox
+                media={lightboxMedia}
+                open={lightboxOpen}
+                onOpenChange={setLightboxOpen}
+                initialIndex={lightboxIndex}
+            />
         </Card>
     );
 }
