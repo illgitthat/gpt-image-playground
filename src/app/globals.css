@@ -196,4 +196,16 @@
   .nudge {
     animation: nudge 1.4s ease-in-out infinite;
   }
+
+  @media (prefers-reduced-motion: reduce) {
+    .pulse-dot,
+    .rise-in,
+    .attention-pulse,
+    .nudge {
+      animation: none !important;
+    }
+    .attention-pulse {
+      border-color: oklch(0.86 0.20 125 / 0.7);
+    }
+  }
 }

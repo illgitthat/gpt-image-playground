@@ -6,6 +6,15 @@ import { ImageOutput } from '@/components/image-output';
 import { PasswordDialog } from '@/components/password-dialog';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle
+} from '@/components/ui/dialog';
 import { VideoForm, type VideoFormData } from '@/components/video-form';
 import { VideoOutput } from '@/components/video-output';
 import {
@@ -98,6 +107,7 @@ export default function HomePage() {
     const [skipDeleteConfirmation, setSkipDeleteConfirmation] = React.useState<boolean>(false);
     const [itemToDeleteConfirm, setItemToDeleteConfirm] = React.useState<HistoryMetadata | null>(null);
     const [dialogCheckboxStateSkipConfirm, setDialogCheckboxStateSkipConfirm] = React.useState<boolean>(false);
+    const [isClearHistoryDialogOpen, setIsClearHistoryDialogOpen] = React.useState(false);
 
     const allDbImages = useLiveQuery<ImageRecord[] | undefined>(() => db.images.toArray(), []);
 
@@ -1123,33 +1133,31 @@ export default function HomePage() {
     };
 
     const handleClearHistory = async () => {
-        const confirmationMessage =
-            effectiveStorageModeClient === 'indexeddb'
-                ? 'Are you sure you want to clear the entire image history? In IndexedDB mode, this will also permanently delete all stored images. This cannot be undone.'
-                : 'Are you sure you want to clear the entire image history? This cannot be undone.';
+        setIsClearHistoryDialogOpen(true);
+    };
 
-        if (window.confirm(confirmationMessage)) {
-            setHistory([]);
-            setLatestImageBatch(null);
-            setLatestVideoBatch(null);
-            setImageOutputView('grid');
-            setVideoViewIndex(0);
-            setError(null);
+    const performClearHistory = async () => {
+        setIsClearHistoryDialogOpen(false);
+        setHistory([]);
+        setLatestImageBatch(null);
+        setLatestVideoBatch(null);
+        setImageOutputView('grid');
+        setVideoViewIndex(0);
+        setError(null);
 
-            try {
-                localStorage.removeItem('openaiImageHistory');
-                console.log('Cleared history metadata from localStorage.');
+        try {
+            localStorage.removeItem('openaiImageHistory');
+            console.log('Cleared history metadata from localStorage.');
 
-                if (effectiveStorageModeClient === 'indexeddb') {
-                    await db.images.clear();
-                    console.log('Cleared images from IndexedDB.');
+            if (effectiveStorageModeClient === 'indexeddb') {
+                await db.images.clear();
+                console.log('Cleared images from IndexedDB.');
 
-                    setBlobUrlCache({});
-                }
-            } catch (e) {
-                console.error('Failed during history clearing:', e);
-                setError(`Failed to clear history: ${e instanceof Error ? e.message : String(e)}`);
+                setBlobUrlCache({});
             }
+        } catch (e) {
+            console.error('Failed during history clearing:', e);
+            setError(`Failed to clear history: ${e instanceof Error ? e.message : String(e)}`);
         }
     };
 
@@ -1406,6 +1414,39 @@ export default function HomePage() {
                         : 'Set a password to use for API requests.'
                 }
             />
+            <Dialog open={isClearHistoryDialogOpen} onOpenChange={setIsClearHistoryDialogOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Clear all history?</DialogTitle>
+                        <DialogDescription>
+                            {effectiveStorageModeClient === 'indexeddb'
+                                ? 'This permanently removes every history entry and deletes all locally stored images from IndexedDB. This cannot be undone.'
+                                : 'This permanently removes every history entry. This cannot be undone.'}
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter>
+                        <Button variant='outline' onClick={() => setIsClearHistoryDialogOpen(false)}>
+                            Cancel
+                        </Button>
+                        <Button variant='destructive' onClick={performClearHistory}>
+                            Clear history
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+            <div className='sr-only' role='status' aria-live='polite'>
+                {isLoading
+                    ? 'Generating image…'
+                    : isGeneratingVideo
+                      ? 'Generating video…'
+                      : isEnhancingGenPrompt
+                        ? 'Enhancing prompt…'
+                        : isSurprisingGen
+                          ? 'Generating a surprise prompt…'
+                          : latestImageBatch && latestImageBatch.length > 0
+                            ? `Generated ${latestImageBatch.length} image${latestImageBatch.length === 1 ? '' : 's'}.`
+                            : ''}
+            </div>
             <div className='w-full max-w-[1400px] space-y-8'>
                 <header className='rise-in flex flex-col gap-6 border-b border-border pb-6 lg:flex-row lg:items-end lg:justify-between'>
                     <div className='flex min-w-0 flex-col gap-3'>
