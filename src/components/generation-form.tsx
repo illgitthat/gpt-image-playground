@@ -155,6 +155,7 @@ export function GenerationForm({
     const [isPastingImage, setIsPastingImage] = React.useState(false);
     const [isDraggingOver, setIsDraggingOver] = React.useState(false);
     const dragCounterRef = React.useRef(0);
+    const refImageInputRef = React.useRef<HTMLInputElement>(null);
     const [lightboxOpen, setLightboxOpen] = React.useState(false);
     const [lightboxIndex, setLightboxIndex] = React.useState(0);
 
@@ -246,6 +247,14 @@ export function GenerationForm({
             addReferenceImages(Array.from(event.target.files));
             event.target.value = '';
         }
+    };
+
+    const handleOpenRefImagePicker = () => {
+        if (isLoading || referenceImages.length >= maxReferenceImages) return;
+        const scrollX = window.scrollX;
+        const scrollY = window.scrollY;
+        refImageInputRef.current?.click();
+        window.scrollTo(scrollX, scrollY);
     };
 
     const handleRefPasteFromClipboard = async () => {
@@ -405,17 +414,20 @@ export function GenerationForm({
                             )}
                         </div>
                         {referenceImages.length === 0 ? (
-                            <Label
-                                htmlFor='gen-ref-image-input'
+                            <button
+                                type='button'
+                                onClick={handleOpenRefImagePicker}
+                                onMouseDown={(event) => event.preventDefault()}
+                                disabled={isLoading || referenceImages.length >= maxReferenceImages}
                                 className={`flex min-h-[80px] w-full cursor-pointer flex-col items-center justify-center gap-2 rounded-md border-2 border-dashed bg-background px-3 py-4 text-sm transition-colors ${
                                     isDraggingOver
                                         ? 'border-primary bg-primary/5 text-primary'
                                         : 'border-border text-muted-foreground hover:bg-muted/30 hover:text-foreground'
-                                }`}>
+                                } disabled:cursor-not-allowed disabled:opacity-50`}>
                                 <ImagePlus className='h-5 w-5' />
                                 <span>{isDraggingOver ? 'Drop images here' : 'Drop, paste, or click to add images'}</span>
                                 <span className='text-xs text-muted-foreground/70'>PNG, JPEG, WebP · Ctrl+V to paste</span>
-                            </Label>
+                            </button>
                         ) : (
                             <div className={`space-y-2 rounded-md p-1 transition-colors ${isDraggingOver ? 'bg-primary/5 ring-2 ring-primary ring-offset-1 ring-offset-background' : ''}`}>
                                 <div className='flex flex-wrap gap-2'>
@@ -442,15 +454,19 @@ export function GenerationForm({
                                         </div>
                                     ))}
                                     {referenceImages.length < maxReferenceImages && (
-                                        <Label
-                                            htmlFor='gen-ref-image-input'
+                                        <button
+                                            type='button'
+                                            onClick={handleOpenRefImagePicker}
+                                            onMouseDown={(event) => event.preventDefault()}
+                                            disabled={isLoading}
                                             className={`flex h-16 w-16 cursor-pointer items-center justify-center rounded-md border border-dashed bg-background transition-colors ${
                                                 isDraggingOver
                                                     ? 'border-primary text-primary'
                                                     : 'border-border text-muted-foreground hover:bg-muted/30 hover:text-foreground'
-                                            }`}>
+                                            } disabled:cursor-not-allowed disabled:opacity-50`}
+                                            aria-label='Add reference images'>
                                             <ImagePlus className='h-5 w-5' />
-                                        </Label>
+                                        </button>
                                     )}
                                 </div>
                                 <div className='flex gap-2'>
@@ -472,13 +488,14 @@ export function GenerationForm({
                             </div>
                         )}
                         <input
+                            ref={refImageInputRef}
                             id='gen-ref-image-input'
                             type='file'
                             accept='image/png, image/jpeg, image/webp'
                             multiple
                             onChange={handleRefImageFileChange}
                             disabled={isLoading || referenceImages.length >= maxReferenceImages}
-                            className='sr-only'
+                            className='hidden'
                         />
                         {imageAddError && <p className='text-xs text-destructive'>{imageAddError}</p>}
                     </div>
