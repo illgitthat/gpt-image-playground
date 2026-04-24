@@ -44,6 +44,7 @@ export type HistoryMetadata = {
     model?: GptImageModel | 'sora-2';
     videoSize?: '1280x720' | '720x1280';
     videoSeconds?: number;
+    referenceImageFilenames?: string[];
 };
 
 const MAX_REFERENCE_IMAGES = 5;
@@ -719,6 +720,28 @@ export default function HomePage() {
         }
     };
 
+    const saveReferenceImages = async (refImages: File[], batchTimestamp: number): Promise<string[]> => {
+        if (refImages.length === 0) return [];
+        const filenames: string[] = [];
+        for (let i = 0; i < refImages.length; i++) {
+            const file = refImages[i];
+            const filename = `ref-${batchTimestamp}-${i}.${file.name.split('.').pop() || 'png'}`;
+            try {
+                if (effectiveStorageModeClient === 'indexeddb') {
+                    await db.images.put({ filename, blob: file });
+                } else {
+                    // For fs mode, upload reference as base64 via a simple put
+                    // Just store in IndexedDB regardless — refs are small and local-only
+                    await db.images.put({ filename, blob: file });
+                }
+                filenames.push(filename);
+            } catch (err) {
+                console.error(`Failed to save reference image ${filename}:`, err);
+            }
+        }
+        return filenames;
+    };
+
     const handleApiCall = async (formData: GenerationFormData) => {
         const startTime = Date.now();
         let durationMs = 0;
@@ -828,6 +851,7 @@ export default function HomePage() {
                                         const costDetails = calculateApiCost(event.usage, currentModel);
 
                                         const batchTimestamp = Date.now();
+                                        const refFilenames = await saveReferenceImages(formData.referenceImages, batchTimestamp);
                                         const newHistoryEntry: HistoryMetadata = {
                                             timestamp: batchTimestamp,
                                             images: event.images.map((img: { filename: string }) => ({
@@ -842,7 +866,8 @@ export default function HomePage() {
                                             prompt: formData.prompt,
                                             mode: 'generate',
                                             costDetails: costDetails,
-                                            model: currentModel
+                                            model: currentModel,
+                                            ...(refFilenames.length > 0 ? { referenceImageFilenames: refFilenames } : {})
                                         };
 
                                         let newImageBatchPromises: Promise<{
@@ -959,6 +984,7 @@ export default function HomePage() {
                 const costDetails = calculateApiCost(result.usage, currentModel);
 
                 const batchTimestamp = Date.now();
+                const refFilenames = await saveReferenceImages(formData.referenceImages, batchTimestamp);
                 const newHistoryEntry: HistoryMetadata = {
                     timestamp: batchTimestamp,
                     images: result.images.map((img: { filename: string }) => ({ filename: img.filename })),
@@ -971,7 +997,8 @@ export default function HomePage() {
                     prompt: formData.prompt,
                     mode: 'generate',
                     costDetails: costDetails,
-                    model: currentModel
+                    model: currentModel,
+                    ...(refFilenames.length > 0 ? { referenceImageFilenames: refFilenames } : {})
                 };
 
                 let newImageBatchPromises: Promise<{ path: string; filename: string } | null>[] = [];
@@ -1327,6 +1354,42 @@ export default function HomePage() {
         }
     };
 
+    const handleReuseWithReferences = async (prompt: string, referenceFilenames: string[]) => {
+        setGenPrompt(prompt);
+        setMode('generate');
+        setError(null);
+
+        const files: File[] = [];
+        const previewUrls: string[] = [];
+
+        for (const filename of referenceFilenames) {
+            try {
+                const record = allDbImages?.find((img) => img.filename === filename);
+                if (record?.blob) {
+                    const file = new File([record.blob], filename, { type: record.blob.type || 'image/png' });
+                    files.push(file);
+                    const url = await new Promise<string>((resolve, reject) => {
+                        const reader = new FileReader();
+                        reader.onloadend = () => resolve(reader.result as string);
+                        reader.onerror = () => reject(new Error('Failed to read reference image'));
+                        reader.readAsDataURL(file);
+                    });
+                    previewUrls.push(url);
+                } else {
+                    console.warn(`Reference image ${filename} not found in IndexedDB`);
+                }
+            } catch (err) {
+                console.error(`Failed to load reference image ${filename}:`, err);
+            }
+        }
+
+        setGenReferenceImages(files);
+        setGenReferenceImagePreviewUrls(previewUrls);
+
+        // Scroll to top so the user sees the form
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+
     return (
         <main className='flex min-h-screen flex-col items-center bg-background px-5 py-8 text-foreground md:px-10 md:py-12 lg:px-16 lg:py-16'>
             <PasswordDialog
@@ -1464,6 +1527,7 @@ export default function HomePage() {
                         onDeletePreferenceDialogChange={setDialogCheckboxStateSkipConfirm}
                         onReusePrompt={handleReusePrompt}
                         onSendToEdit={handleUseAsReference}
+                        onReuseWithReferences={handleReuseWithReferences}
                     />
                 </div>
             </div>
