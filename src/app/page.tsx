@@ -1358,6 +1358,9 @@ export default function HomePage() {
         setGenPrompt(prompt);
         setMode('generate');
         setError(null);
+        setLatestImageBatch(null);
+        setImageOutputView('grid');
+        setStreamingPreviewImages(new Map());
 
         const files: File[] = [];
         const previewUrls: string[] = [];

@@ -291,14 +291,6 @@ export function HistoryPanel({
                                                     <span className='font-medium text-foreground/90'>Quality:</span>{' '}
                                                     {item.quality}
                                                 </p>
-                                                <p>
-                                                    <span className='font-medium text-foreground/90'>BG:</span>{' '}
-                                                    {item.background}
-                                                </p>
-                                                <p>
-                                                    <span className='font-medium text-foreground/90'>Mod:</span>{' '}
-                                                    {item.moderation}
-                                                </p>
                                             </>
                                         )}
                                         {item.referenceImageFilenames && item.referenceImageFilenames.length > 0 && (
