@@ -339,13 +339,13 @@ export function HistoryPanel({
                                                     !isOpen && setOpenPromptDialogTimestamp(null)
                                                 }>
                                                 <DialogTrigger asChild>
-                                                    <Button
-                                                        variant='outline'
-                                                        size='sm'
-                                                        className='h-6 flex-grow border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted/60 hover:text-foreground'
-                                                        onClick={() => setOpenPromptDialogTimestamp(itemKey)}>
-                                                        Show Prompt
-                                                    </Button>
+                                                    <button
+                                                        type='button'
+                                                        className='flex-grow cursor-pointer rounded-md border border-border bg-muted/30 px-2 py-1.5 text-left text-[11px] leading-snug text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground'
+                                                        onClick={() => setOpenPromptDialogTimestamp(itemKey)}
+                                                        title={item.prompt || 'No prompt'}>
+                                                        <span className='line-clamp-2'>{item.prompt || 'No prompt recorded.'}</span>
+                                                    </button>
                                                 </DialogTrigger>
                                                 <DialogContent className='border-border bg-popover text-foreground sm:max-w-[625px]'>
                                                     <DialogHeader>
