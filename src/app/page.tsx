@@ -16,6 +16,7 @@ import {
     type GptImageModel
 } from '@/lib/cost-utils';
 import { db, type ImageRecord } from '@/lib/db';
+import { compressImageForUpload } from '@/lib/image-compress';
 import { useLiveQuery } from 'dexie-react-hooks';
 import * as React from 'react';
 
@@ -242,6 +243,56 @@ export default function HomePage() {
     React.useEffect(() => {
         localStorage.setItem('imageGenSkipDeleteConfirm', String(skipDeleteConfirmation));
     }, [skipDeleteConfirmation]);
+
+    React.useEffect(() => {
+        const handlePaste = (event: ClipboardEvent) => {
+            if (!event.clipboardData) return;
+
+            // Don't intercept paste when the user is typing in a text field
+            const active = document.activeElement;
+            if (
+                active instanceof HTMLTextAreaElement ||
+                active instanceof HTMLInputElement ||
+                (active instanceof HTMLElement && active.isContentEditable)
+            ) {
+                return;
+            }
+
+            if (genReferenceImages.length >= MAX_REFERENCE_IMAGES) return;
+
+            const items = event.clipboardData.items;
+            for (let i = 0; i < items.length; i++) {
+                if (items[i].type.startsWith('image/')) {
+                    const file = items[i].getAsFile();
+                    if (file) {
+                        event.preventDefault();
+                        compressImageForUpload(file)
+                            .then((processed) => {
+                                const reader = new FileReader();
+                                reader.onloadend = () => {
+                                    setGenReferenceImages((prev) => [...prev, processed]);
+                                    setGenReferenceImagePreviewUrls((prev) => [...prev, reader.result as string]);
+                                };
+                                reader.readAsDataURL(processed);
+                            })
+                            .catch((err) => {
+                                console.error('Failed to process pasted image:', err);
+                                const reader = new FileReader();
+                                reader.onloadend = () => {
+                                    setGenReferenceImages((prev) => [...prev, file]);
+                                    setGenReferenceImagePreviewUrls((prev) => [...prev, reader.result as string]);
+                                };
+                                reader.readAsDataURL(file);
+                            });
+                        break;
+                    }
+                }
+            }
+        };
+
+        window.addEventListener('paste', handlePaste);
+        return () => window.removeEventListener('paste', handlePaste);
+    }, [genReferenceImages.length]);
 
     React.useEffect(() => {
         return () => {

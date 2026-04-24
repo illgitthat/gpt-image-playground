@@ -413,8 +413,8 @@ export function GenerationForm({
                                         : 'border-border text-muted-foreground hover:bg-muted/30 hover:text-foreground'
                                 }`}>
                                 <ImagePlus className='h-5 w-5' />
-                                <span>{isDraggingOver ? 'Drop images here' : 'Drop images here or click to browse'}</span>
-                                <span className='text-xs text-muted-foreground/70'>PNG, JPEG, WebP</span>
+                                <span>{isDraggingOver ? 'Drop images here' : 'Drop, paste, or click to add images'}</span>
+                                <span className='text-xs text-muted-foreground/70'>PNG, JPEG, WebP · Ctrl+V to paste</span>
                             </Label>
                         ) : (
                             <div className={`space-y-2 rounded-md p-1 transition-colors ${isDraggingOver ? 'bg-primary/5 ring-2 ring-primary ring-offset-1 ring-offset-background' : ''}`}>
