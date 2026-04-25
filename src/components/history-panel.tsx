@@ -22,13 +22,11 @@ import {
     Check,
     Layers,
     DollarSign,
-    Pencil,
+    ImagePlus,
     Sparkles as SparklesIcon,
-    HardDrive,
-    Database,
-    FileImage,
     Trash2,
-    ArrowUpRight
+    ArrowUpRight,
+    RotateCcw
 } from 'lucide-react';
 import Image from 'next/image';
 import * as React from 'react';
@@ -46,6 +44,7 @@ type HistoryPanelProps = {
     onDeletePreferenceDialogChange: (isChecked: boolean) => void;
     onReusePrompt: (prompt: string, mode: 'generate' | 'edit' | 'video') => void;
     onSendToEdit?: (filename: string) => void;
+    onReuseWithReferences?: (prompt: string, referenceFilenames: string[]) => void;
 };
 
 const formatDuration = (ms: number): string => {
@@ -104,7 +103,8 @@ export function HistoryPanel({
     deletePreferenceDialogValue,
     onDeletePreferenceDialogChange,
     onReusePrompt,
-    onSendToEdit
+    onSendToEdit,
+    onReuseWithReferences
 }: HistoryPanelProps) {
     const [openPromptDialogTimestamp, setOpenPromptDialogTimestamp] = React.useState<number | null>(null);
     const [openCostDialogTimestamp, setOpenCostDialogTimestamp] = React.useState<number | null>(null);
@@ -163,68 +163,6 @@ export function HistoryPanel({
                     <CardTitle className='font-display text-3xl font-normal leading-none tracking-tight text-foreground'>
                         History
                     </CardTitle>
-                    {totalCost > 0 && (
-                        <Dialog open={isTotalCostDialogOpen} onOpenChange={setIsTotalCostDialogOpen}>
-                            <DialogTrigger asChild>
-                                <button
-                                    className='mt-0.5 flex items-center gap-1 rounded-full bg-green-500/10 px-2 py-0.5 text-[12px] text-green-400 transition-colors hover:bg-green-500/20 hover:text-green-300'
-                                    aria-label='Show total cost summary'>
-                                    Total Estimated Cost: {formatUsd(totalCost)}
-                                </button>
-                            </DialogTrigger>
-                            <DialogContent className='border-border bg-popover text-foreground sm:max-w-[450px]'>
-                                <DialogHeader>
-                                    <DialogTitle className='text-foreground'>Total Cost Summary</DialogTitle>
-                                    {/* Add sr-only description for accessibility */}
-                                    <DialogDescription className='sr-only'>
-                                        A summary of the total estimated cost for all generated images in the history.
-                                    </DialogDescription>
-                                </DialogHeader>
-                                <div className='space-y-1 pt-1 text-xs text-muted-foreground'>
-                                    {GPT_IMAGE_MODELS.map((modelName, index) => {
-                                        const rates = getModelRates(modelName);
-
-                                        return (
-                                            <React.Fragment key={modelName}>
-                                                <p className={index === 0 ? 'font-medium' : 'mt-2 font-medium'}>
-                                                    {modelName}:
-                                                </p>
-                                                <ul className='list-disc pl-4'>
-                                                    <li>Text Input: ${rates.textInputPerMillion} / 1M tokens</li>
-                                                    <li>Image Input: ${rates.imageInputPerMillion} / 1M tokens</li>
-                                                    <li>Image Output: ${rates.imageOutputPerMillion} / 1M tokens</li>
-                                                </ul>
-                                            </React.Fragment>
-                                        );
-                                    })}
-                                </div>
-                                <div className='space-y-2 py-4 text-sm text-foreground/90'>
-                                    <div className='flex justify-between'>
-                                        <span>Total Images Generated:</span> <span>{totalImages.toLocaleString()}</span>
-                                    </div>
-                                    <div className='flex justify-between'>
-                                        <span>Average Cost Per Image:</span> <span>{formatUsd(averageCost)}</span>
-                                    </div>
-                                    <hr className='my-2 border-border' />
-                                    <div className='flex justify-between font-medium text-foreground'>
-                                        <span>Total Estimated Cost:</span>
-                                        <span>{formatUsd(totalCost)}</span>
-                                    </div>
-                                </div>
-                                <DialogFooter>
-                                    <DialogClose asChild>
-                                        <Button
-                                            type='button'
-                                            variant='secondary'
-                                            size='sm'
-                                            className='bg-muted text-foreground hover:bg-muted/80'>
-                                            Close
-                                        </Button>
-                                    </DialogClose>
-                                </DialogFooter>
-                            </DialogContent>
-                        </Dialog>
-                    )}
                 </div>
                 {history.length > 0 && (
                     <Button
@@ -250,7 +188,6 @@ export function HistoryPanel({
                             const isMultiImage = mediaCount > 1;
                             const itemKey = item.timestamp;
                             const originalStorageMode = item.storageModeUsed || 'fs';
-                            const outputFormat = item.output_format || 'png';
                             const isAboveTheFoldThumbnail = itemIndex === 0;
 
                             const isVideo = item.mode === 'video';
@@ -297,50 +234,19 @@ export function HistoryPanel({
                                                     ?
                                                 </div>
                                             )}
-                                            <div
-                                                className={cn(
-                                                    'pointer-events-none absolute top-1 left-1 z-10 flex items-center gap-1 rounded-full px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] backdrop-blur-sm',
-                                                    item.mode === 'edit'
-                                                        ? 'bg-foreground/85 text-background'
-                                                        : item.mode === 'video'
-                                                          ? 'bg-foreground/70 text-background'
-                                                          : 'bg-primary text-primary-foreground'
-                                                )}>
-                                                {item.mode === 'edit' ? (
-                                                    <Pencil size={12} />
-                                                ) : item.mode === 'video' ? (
+                                            {item.mode === 'video' && (
+                                                <div
+                                                    className='pointer-events-none absolute top-1 left-1 z-10 flex items-center gap-1 rounded-full bg-foreground/70 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-background backdrop-blur-sm'>
                                                     <SparklesIcon size={12} />
-                                                ) : (
-                                                    <SparklesIcon size={12} />
-                                                )}
-                                                {item.mode === 'edit'
-                                                    ? 'Edit'
-                                                    : item.mode === 'video'
-                                                      ? 'Video'
-                                                      : 'Create'}
-                                            </div>
+                                                    Video
+                                                </div>
+                                            )}
                                             {isMultiImage && (
                                                 <div className='pointer-events-none absolute right-1 bottom-1 z-10 flex items-center gap-1 rounded-full bg-background/70 px-1.5 py-0.5 text-[12px] text-foreground'>
                                                     <Layers size={16} />
                                                     {mediaCount}
                                                 </div>
                                             )}
-                                            <div className='pointer-events-none absolute bottom-1 left-1 z-10 flex items-center gap-1'>
-                                                <div className='flex items-center gap-1 rounded-full border border-border bg-popover/80 px-1 py-0.5 text-[11px] text-muted-foreground'>
-                                                    {originalStorageMode === 'fs' ? (
-                                                        <HardDrive size={12} className='text-muted-foreground' />
-                                                    ) : (
-                                                        <Database size={12} className='text-primary' />
-                                                    )}
-                                                    <span>{originalStorageMode === 'fs' ? 'file' : 'db'}</span>
-                                                </div>
-                                                {item.output_format && !isVideo && (
-                                                    <div className='flex items-center gap-1 rounded-full border border-border bg-popover/80 px-1 py-0.5 text-[11px] text-muted-foreground'>
-                                                        <FileImage size={12} className='text-muted-foreground' />
-                                                        <span>{outputFormat.toUpperCase()}</span>
-                                                    </div>
-                                                )}
-                                            </div>
                                         </button>
                                         {!isVideo && firstMedia && onSendToEdit && (
                                             <button
@@ -350,149 +256,12 @@ export function HistoryPanel({
                                                     onSelectImage(item, { skipModeChange: true });
                                                     onSendToEdit(firstMedia.filename);
                                                 }}
-                                                title='Send to Edit'
-                                                aria-label='Send to Edit'
+                                                title='Use as Reference'
+                                                aria-label='Use as Reference'
                                                 className='absolute inset-x-0 bottom-0 z-20 flex items-center justify-center gap-1.5 border-t border-primary/40 bg-primary/90 px-2 py-1.5 font-mono text-[10px] uppercase tracking-[0.18em] text-primary-foreground opacity-0 backdrop-blur-sm transition-opacity duration-150 group-hover:opacity-100 focus:opacity-100 focus:outline-none'>
-                                                <Pencil size={11} />
-                                                Edit
+                                                <ImagePlus size={11} />
+                                                Reference
                                             </button>
-                                        )}
-                                        {item.costDetails && (
-                                            <Dialog
-                                                open={openCostDialogTimestamp === itemKey}
-                                                onOpenChange={(isOpen) => !isOpen && setOpenCostDialogTimestamp(null)}>
-                                                <DialogTrigger asChild>
-                                                    <button
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            setOpenCostDialogTimestamp(itemKey);
-                                                        }}
-                                                        className='absolute top-1 right-1 z-20 flex items-center gap-0.5 rounded-full bg-background/40 px-1.5 py-0.5 text-[11px] text-muted-foreground backdrop-blur-sm transition-colors hover:bg-background/60 hover:text-foreground'
-                                                        aria-label='Show cost breakdown'>
-                                                        <DollarSign size={12} />
-                                                        {formatUsdBadge(item.costDetails.estimated_cost_usd)}
-                                                    </button>
-                                                </DialogTrigger>
-                                                <DialogContent className='border-border bg-popover text-foreground sm:max-w-[450px]'>
-                                                    <DialogHeader>
-                                                        <DialogTitle className='text-foreground'>Cost Breakdown</DialogTitle>
-                                                        <DialogDescription className='sr-only'>
-                                                            Estimated cost breakdown for this image generation.
-                                                        </DialogDescription>
-                                                    </DialogHeader>
-                                                    {item.mode === 'video' ? (
-                                                        <div className='space-y-3 py-3 text-sm text-foreground/90'>
-                                                            <div className='space-y-1 text-xs text-muted-foreground'>
-                                                                <p>Pricing for Sora video:</p>
-                                                                <ul className='list-disc pl-4'>
-                                                                    <li>$0.10 per second</li>
-                                                                </ul>
-                                                            </div>
-                                                            <div className='flex justify-between'>
-                                                                <span>Duration (s):</span>
-                                                                <span>{item.videoSeconds ?? 'N/A'}</span>
-                                                            </div>
-                                                            <hr className='my-2 border-border' />
-                                                            <div className='flex justify-between font-medium text-foreground'>
-                                                                <span>Total Estimated Cost:</span>
-                                                                <span>{formatUsd(item.costDetails.estimated_cost_usd)}</span>
-                                                            </div>
-                                                        </div>
-                                                    ) : (
-                                                        <>
-                                                            {(() => {
-                                                                const modelForRates = getImageModelForRates(item.model);
-                                                                const rates = getModelRates(modelForRates);
-
-                                                                return (
-                                                                    <>
-                                                                        <div className='space-y-1 pt-1 text-xs text-muted-foreground'>
-                                                                            <p>Pricing for {modelForRates}:</p>
-                                                                            <ul className='list-disc pl-4'>
-                                                                                <li>
-                                                                                    Text Input: $
-                                                                                    {rates.textInputPerMillion} / 1M
-                                                                                    tokens
-                                                                                </li>
-                                                                                <li>
-                                                                                    Image Input: $
-                                                                                    {rates.imageInputPerMillion} / 1M
-                                                                                    tokens
-                                                                                </li>
-                                                                                <li>
-                                                                                    Image Output: $
-                                                                                    {rates.imageOutputPerMillion} / 1M
-                                                                                    tokens
-                                                                                </li>
-                                                                            </ul>
-                                                                        </div>
-                                                                        <div className='space-y-2 py-4 text-sm text-foreground/90'>
-                                                                            <div className='flex justify-between'>
-                                                                                <span>Text Input Tokens:</span>{' '}
-                                                                                <span>
-                                                                                    {item.costDetails.text_input_tokens.toLocaleString()}{' '}
-                                                                                    (~
-                                                                                    {calculateCost(
-                                                                                        item.costDetails
-                                                                                            .text_input_tokens,
-                                                                                        rates.textInputPerToken
-                                                                                    )}
-                                                                                    )
-                                                                                </span>
-                                                                            </div>
-                                                                            {item.costDetails.image_input_tokens >
-                                                                                0 && (
-                                                                                <div className='flex justify-between'>
-                                                                                    <span>Image Input Tokens:</span>{' '}
-                                                                                    <span>
-                                                                                        {item.costDetails.image_input_tokens.toLocaleString()}{' '}
-                                                                                        (~
-                                                                                        {calculateCost(
-                                                                                            item.costDetails
-                                                                                                .image_input_tokens,
-                                                                                            rates.imageInputPerToken
-                                                                                        )}
-                                                                                        )
-                                                                                    </span>
-                                                                                </div>
-                                                                            )}
-                                                                            <div className='flex justify-between'>
-                                                                                <span>Image Output Tokens:</span>{' '}
-                                                                                <span>
-                                                                                    {item.costDetails.image_output_tokens.toLocaleString()}{' '}
-                                                                                    (~
-                                                                                    {calculateCost(
-                                                                                        item.costDetails
-                                                                                            .image_output_tokens,
-                                                                                        rates.imageOutputPerToken
-                                                                                    )}
-                                                                                    )
-                                                                                </span>
-                                                                            </div>
-                                                                            <hr className='my-2 border-border' />
-                                                                            <div className='flex justify-between font-medium text-foreground'>
-                                                                                <span>Total Estimated Cost:</span>
-                                                                                <span>{formatUsd(item.costDetails.estimated_cost_usd)}</span>
-                                                                            </div>
-                                                                        </div>
-                                                                    </>
-                                                                );
-                                                            })()}
-                                                        </>
-                                                    )}
-                                                    <DialogFooter>
-                                                        <DialogClose asChild>
-                                                            <Button
-                                                                type='button'
-                                                                variant='secondary'
-                                                                size='sm'
-                                                                className='bg-muted text-foreground hover:bg-muted/80'>
-                                                                Close
-                                                            </Button>
-                                                        </DialogClose>
-                                                    </DialogFooter>
-                                                </DialogContent>
-                                            </Dialog>
                                         )}
                                     </div>
 
@@ -522,15 +291,46 @@ export function HistoryPanel({
                                                     <span className='font-medium text-foreground/90'>Quality:</span>{' '}
                                                     {item.quality}
                                                 </p>
-                                                <p>
-                                                    <span className='font-medium text-foreground/90'>BG:</span>{' '}
-                                                    {item.background}
-                                                </p>
-                                                <p>
-                                                    <span className='font-medium text-foreground/90'>Mod:</span>{' '}
-                                                    {item.moderation}
-                                                </p>
                                             </>
+                                        )}
+                                        {item.referenceImageFilenames && item.referenceImageFilenames.length > 0 && (
+                                            <div className='mt-1.5'>
+                                                <div className='flex items-center justify-between gap-2'>
+                                                    <span className='text-[11px] font-medium text-foreground/90'>References:</span>
+                                                    {onReuseWithReferences && (
+                                                        <Button
+                                                            variant='outline'
+                                                            size='sm'
+                                                            onClick={() => onReuseWithReferences(item.prompt, item.referenceImageFilenames!)}
+                                                            className='h-5 gap-1 border-border px-1.5 text-[10px] text-muted-foreground hover:bg-muted/60 hover:text-foreground'>
+                                                            <RotateCcw className='h-3 w-3' />
+                                                            Reuse
+                                                        </Button>
+                                                    )}
+                                                </div>
+                                                <div className='mt-1 flex flex-wrap gap-1'>
+                                                    {item.referenceImageFilenames.map((refFilename) => {
+                                                        const src = getImageSrc(refFilename);
+                                                        return src ? (
+                                                            <Image
+                                                                key={refFilename}
+                                                                src={src}
+                                                                alt='Reference'
+                                                                width={32}
+                                                                height={32}
+                                                                className='h-8 w-8 rounded border border-border object-cover'
+                                                                unoptimized
+                                                            />
+                                                        ) : (
+                                                            <div
+                                                                key={refFilename}
+                                                                className='flex h-8 w-8 items-center justify-center rounded border border-border bg-muted text-[9px] text-muted-foreground'>
+                                                                ?
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
                                         )}
                                         <div className='mt-2 flex items-center gap-1'>
                                             <Dialog
@@ -539,13 +339,13 @@ export function HistoryPanel({
                                                     !isOpen && setOpenPromptDialogTimestamp(null)
                                                 }>
                                                 <DialogTrigger asChild>
-                                                    <Button
-                                                        variant='outline'
-                                                        size='sm'
-                                                        className='h-6 flex-grow border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted/60 hover:text-foreground'
-                                                        onClick={() => setOpenPromptDialogTimestamp(itemKey)}>
-                                                        Show Prompt
-                                                    </Button>
+                                                    <button
+                                                        type='button'
+                                                        className='flex-grow cursor-pointer rounded-md border border-border bg-muted/30 px-2 py-1.5 text-left text-[11px] leading-snug text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground'
+                                                        onClick={() => setOpenPromptDialogTimestamp(itemKey)}
+                                                        title={item.prompt || 'No prompt'}>
+                                                        <span className='line-clamp-2'>{item.prompt || 'No prompt recorded.'}</span>
+                                                    </button>
                                                 </DialogTrigger>
                                                 <DialogContent className='border-border bg-popover text-foreground sm:max-w-[625px]'>
                                                     <DialogHeader>

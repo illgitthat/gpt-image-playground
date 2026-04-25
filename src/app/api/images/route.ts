@@ -202,12 +202,11 @@ export async function POST(request: NextRequest) {
             }
         }
 
-        const mode = formData.get('mode') as 'generate' | 'edit' | null;
         const prompt = formData.get('prompt') as string | null;
         const model = parseRequestedModel(formData.get('model'));
 
-        if (!mode || !prompt) {
-            return NextResponse.json({ error: 'Missing required parameters: mode and prompt' }, { status: 400 });
+        if (!prompt) {
+            return NextResponse.json({ error: 'Missing required parameter: prompt' }, { status: 400 });
         }
 
         if (!model) {
@@ -244,22 +243,18 @@ export async function POST(request: NextRequest) {
             ...(useStreaming ? { partial_images: partialImages } : {})
         } as OpenAI.Responses.Tool;
 
-        // For edit mode, we need to include the image(s) in the input
+        // Build input: check for optional reference images
         let inputContent: string | OpenAI.Responses.ResponseInputItem[];
 
-        if (mode === 'edit') {
-            const imageFiles: File[] = [];
-            for (const [key, value] of formData.entries()) {
-                if (key.startsWith('image_') && value instanceof File) {
-                    imageFiles.push(value);
-                }
+        const imageFiles: File[] = [];
+        for (const [key, value] of formData.entries()) {
+            if (key.startsWith('image_') && value instanceof File) {
+                imageFiles.push(value);
             }
+        }
 
-            if (imageFiles.length === 0) {
-                return NextResponse.json({ error: 'No image file provided for editing.' }, { status: 400 });
-            }
-
-            // Convert images to base64 data URLs
+        if (imageFiles.length > 0) {
+            // Build multimodal input with reference images + text prompt
             const imageContents: OpenAI.Responses.ResponseInputContent[] = [];
             for (const file of imageFiles) {
                 const arrayBuffer = await file.arrayBuffer();
@@ -271,19 +266,6 @@ export async function POST(request: NextRequest) {
                     detail: 'auto'
                 });
             }
-
-            // Include mask image if provided
-            const maskFile = formData.get('mask');
-            if (maskFile instanceof File) {
-                const maskBuffer = await maskFile.arrayBuffer();
-                const maskBase64 = Buffer.from(maskBuffer).toString('base64');
-                imageContents.push({
-                    type: 'input_image',
-                    image_url: `data:image/png;base64,${maskBase64}`,
-                    detail: 'auto'
-                });
-            }
-
             imageContents.push({ type: 'input_text', text: prompt });
             inputContent = [{ role: 'user', content: imageContents }];
         } else {

@@ -80,6 +80,11 @@ export function VideoForm({
     const [referenceDims, setReferenceDims] = React.useState<{ width: number; height: number } | null>(null);
     const [userChoseSize, setUserChoseSize] = React.useState(false);
     const previousPreviewUrl = React.useRef<string | null>(null);
+    const toggleMode = currentMode === 'edit' ? 'generate' : currentMode;
+    const handleToggleModeChange = React.useCallback(
+        (nextMode: 'generate' | 'video') => onModeChange(nextMode),
+        [onModeChange]
+    );
 
     const targetSize = React.useMemo(() => {
         const [w, h] = size.split('x').map((v) => parseInt(v, 10));
@@ -194,7 +199,7 @@ export function VideoForm({
                         Generate a short video from a prompt, optionally guided by a reference image (Sora 2).
                     </CardDescription>
                 </div>
-                <ModeToggle currentMode={currentMode} onModeChange={onModeChange} />
+                <ModeToggle currentMode={toggleMode} onModeChange={handleToggleModeChange} />
             </CardHeader>
             <form onSubmit={handleSubmit} className='flex h-full flex-1 flex-col overflow-hidden'>
                 <CardContent className='flex-1 space-y-5 overflow-y-auto p-4'>

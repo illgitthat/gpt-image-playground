@@ -8,7 +8,7 @@
  * re-encoding to WebP before sending typically cuts payload size 5–20× with
  * no visible quality loss for reference imagery.
  *
- * The function is a no-op (returns the original `File`) when:
+ * The function returns an in-memory snapshot of the original `File` when:
  *   - running outside the browser (no `document` / `createImageBitmap`),
  *   - the image is already small enough,
  *   - decoding or re-encoding fails (we never want to break uploads).
@@ -67,19 +67,40 @@ async function canvasToBlob(canvas: HTMLCanvasElement, mime: string, quality: nu
     });
 }
 
+async function snapshotOriginalFile(file: File): Promise<File> {
+    const buffer = await file.arrayBuffer();
+    return new File([buffer], file.name || 'image', {
+        type: file.type,
+        lastModified: file.lastModified || Date.now()
+    });
+}
+
+async function fallbackToSnapshot(file: File, message: string, err?: unknown): Promise<File> {
+    if (err) {
+        console.warn(message, err);
+    }
+
+    try {
+        return await snapshotOriginalFile(file);
+    } catch (snapshotErr) {
+        console.warn('compressImageForUpload: failed to snapshot original file', snapshotErr);
+        return file;
+    }
+}
+
 /**
  * Compress and/or downscale an image `File` for upload. Returns a new `File`
- * (with adjusted name + type) on success, or the original `File` when
- * compression isn't beneficial or isn't possible.
+ * (with adjusted name + type) on compression success, or an in-memory snapshot
+ * when compression isn't beneficial or isn't possible.
  */
 export async function compressImageForUpload(file: File, options: CompressOptions = {}): Promise<File> {
     // SVG / GIF / unknown — do not touch (rasterising would lose animation/vectors).
     if (!file.type.startsWith('image/') || file.type === 'image/svg+xml' || file.type === 'image/gif') {
-        return file;
+        return fallbackToSnapshot(file, 'compressImageForUpload: unsupported image type, snapshotting original');
     }
 
     if (!isBrowserCompressible()) {
-        return file;
+        return fallbackToSnapshot(file, 'compressImageForUpload: browser compression unavailable, snapshotting original');
     }
 
     const maxDimension = options.maxDimension ?? DEFAULTS.maxDimension;
@@ -90,8 +111,7 @@ export async function compressImageForUpload(file: File, options: CompressOption
     try {
         bitmap = await createImageBitmap(file);
     } catch (err) {
-        console.warn('compressImageForUpload: createImageBitmap failed, sending original', err);
-        return file;
+        return fallbackToSnapshot(file, 'compressImageForUpload: createImageBitmap failed, snapshotting original', err);
     }
 
     try {
@@ -101,7 +121,7 @@ export async function compressImageForUpload(file: File, options: CompressOption
 
         // Skip if already small AND no downscale needed AND format is already efficient.
         if (!needsDownscale && file.size <= skipIfSmallerThan) {
-            return file;
+            return await snapshotOriginalFile(file);
         }
 
         const scale = needsDownscale ? maxDimension / longest : 1;
@@ -113,26 +133,25 @@ export async function compressImageForUpload(file: File, options: CompressOption
         canvas.height = targetH;
         const ctx = canvas.getContext('2d');
         if (!ctx) {
-            return file;
+            return await snapshotOriginalFile(file);
         }
         ctx.drawImage(bitmap, 0, 0, targetW, targetH);
 
         const outMime = pickOutputMime(file, options.mimeType);
         const blob = await canvasToBlob(canvas, outMime, quality);
         if (!blob) {
-            return file;
+            return await snapshotOriginalFile(file);
         }
 
         // If re-encoding actually grew the file (e.g. tiny PNG icon), keep original.
         if (blob.size >= file.size && !needsDownscale) {
-            return file;
+            return await snapshotOriginalFile(file);
         }
 
         const newName = renameWithExtension(file.name || 'image', extensionFor(outMime));
         return new File([blob], newName, { type: outMime, lastModified: Date.now() });
     } catch (err) {
-        console.warn('compressImageForUpload: compression failed, sending original', err);
-        return file;
+        return await fallbackToSnapshot(file, 'compressImageForUpload: compression failed, snapshotting original', err);
     } finally {
         bitmap.close?.();
     }

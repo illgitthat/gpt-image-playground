@@ -3,7 +3,7 @@
 import { Button } from '@/components/ui/button';
 import { ImageLightbox, type LightboxMedia } from '@/components/image-lightbox';
 import { cn } from '@/lib/utils';
-import { Loader2, Send, Grid, Download, Maximize2 } from 'lucide-react';
+import { Loader2, Send, Grid, Download, Maximize2, ImagePlus } from 'lucide-react';
 import Image from 'next/image';
 import * as React from 'react';
 
@@ -19,7 +19,6 @@ type ImageOutputProps = {
     altText?: string;
     isLoading: boolean;
     onSendToEdit: (filename: string) => void;
-    currentMode: 'generate' | 'edit' | 'video';
     baseImagePreviewUrl: string | null;
     streamingPreviewImages?: Map<number, string>;
     onSendToVideo?: (filename: string) => void;
@@ -42,7 +41,6 @@ export function ImageOutput({
     altText = 'Generated image output',
     isLoading,
     onSendToEdit,
-    currentMode,
     baseImagePreviewUrl,
     streamingPreviewImages,
     onSendToVideo
@@ -131,11 +129,11 @@ export function ImageOutput({
                                 <p className='text-sm'>Streaming...</p>
                             </div>
                         </div>
-                    ) : currentMode === 'edit' && baseImagePreviewUrl ? (
+                    ) : baseImagePreviewUrl ? (
                         <div className='relative flex h-full w-full items-center justify-center'>
                             <Image
                                 src={baseImagePreviewUrl}
-                                alt='Base image for editing'
+                                alt='Reference image'
                                 fill
                                 style={{ objectFit: 'contain' }}
                                 className='blur-md filter'
@@ -143,7 +141,7 @@ export function ImageOutput({
                             />
                             <div className='absolute inset-0 flex flex-col items-center justify-center bg-background/50 text-foreground/90'>
                                 <Loader2 className='mb-2 h-8 w-8 animate-spin' />
-                                <p>Editing image...</p>
+                                <p>Generating image...</p>
                             </div>
                         </div>
                     ) : (
@@ -282,7 +280,7 @@ export function ImageOutput({
                             showCarousel && viewMode === 'grid' ? 'invisible' : 'visible'
                         )}>
                         <Send className='mr-2 h-4 w-4' />
-                        Send to Edit
+                        Use as Reference
                     </Button>
                     {/* Send to Video button hidden - feature temporarily disabled
                     {onSendToVideo && (

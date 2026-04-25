@@ -109,12 +109,12 @@ export async function POST(request: NextRequest) {
 
     try {
         const body = await request.json();
-        const mode = body?.mode as 'generate' | 'edit' | undefined;
+        const mode = body?.mode as 'generate' | undefined;
         const referenceImages = sanitizeReferenceImages(body?.referenceImages);
         const clientPasswordHash = body?.passwordHash as string | undefined;
 
-        if (!mode || (mode !== 'generate' && mode !== 'edit')) {
-            return NextResponse.json({ error: 'Missing or invalid parameter: mode must be "generate" or "edit".' }, { status: 400 });
+        if (!mode || mode !== 'generate') {
+            return NextResponse.json({ error: 'Missing or invalid parameter: mode must be "generate".' }, { status: 400 });
         }
 
         if (process.env.APP_PASSWORD) {
