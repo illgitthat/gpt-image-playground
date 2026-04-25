@@ -1136,6 +1136,24 @@ export default function HomePage() {
         setIsClearHistoryDialogOpen(true);
     };
 
+    const deleteIndexedDbFiles = async (filenames: string[]) => {
+        const uniqueFilenames = Array.from(new Set(filenames.filter(Boolean)));
+        if (uniqueFilenames.length === 0) return;
+
+        await db.images.where('filename').anyOf(uniqueFilenames).delete();
+        setBlobUrlCache((prevCache) => {
+            const newCache = { ...prevCache };
+            uniqueFilenames.forEach((filename) => {
+                const cachedUrl = newCache[filename];
+                if (cachedUrl?.startsWith('blob:')) {
+                    URL.revokeObjectURL(cachedUrl);
+                }
+                delete newCache[filename];
+            });
+            return newCache;
+        });
+    };
+
     const performClearHistory = async () => {
         setIsClearHistoryDialogOpen(false);
         setHistory([]);
@@ -1149,12 +1167,19 @@ export default function HomePage() {
             localStorage.removeItem('openaiImageHistory');
             console.log('Cleared history metadata from localStorage.');
 
-            if (effectiveStorageModeClient === 'indexeddb') {
-                await db.images.clear();
-                console.log('Cleared images from IndexedDB.');
+            // Reference images are always persisted in IndexedDB, even when generated
+            // outputs are stored on the filesystem.
+            await db.images.clear();
+            console.log('Cleared locally stored images from IndexedDB.');
 
-                setBlobUrlCache({});
-            }
+            setBlobUrlCache((prevCache) => {
+                Object.values(prevCache).forEach((url) => {
+                    if (url.startsWith('blob:')) {
+                        URL.revokeObjectURL(url);
+                    }
+                });
+                return {};
+            });
         } catch (e) {
             console.error('Failed during history clearing:', e);
             setError(`Failed to clear history: ${e instanceof Error ? e.message : String(e)}`);
@@ -1285,18 +1310,20 @@ export default function HomePage() {
         console.log(`Executing delete for history item timestamp: ${item.timestamp}`);
         setError(null); // Clear previous errors
 
-        const { images: imagesInEntry = [], videos: videosInEntry = [], storageModeUsed, timestamp } = item;
+        const {
+            images: imagesInEntry = [],
+            videos: videosInEntry = [],
+            storageModeUsed,
+            timestamp,
+            referenceImageFilenames = []
+        } = item;
         const filenamesToDelete = [...imagesInEntry, ...videosInEntry].map((asset) => asset.filename);
 
         try {
             if (storageModeUsed === 'indexeddb') {
-                console.log('Deleting from IndexedDB:', filenamesToDelete);
-                await db.images.where('filename').anyOf(filenamesToDelete).delete();
-                setBlobUrlCache((prevCache) => {
-                    const newCache = { ...prevCache };
-                    filenamesToDelete.forEach((fn) => delete newCache[fn]);
-                    return newCache;
-                });
+                const indexedDbFilenamesToDelete = [...filenamesToDelete, ...referenceImageFilenames];
+                console.log('Deleting from IndexedDB:', indexedDbFilenamesToDelete);
+                await deleteIndexedDbFiles(indexedDbFilenamesToDelete);
                 console.log('Successfully deleted from IndexedDB and cleared blob cache.');
             } else if (storageModeUsed === 'fs') {
                 console.log('Requesting deletion from filesystem via API:', filenamesToDelete);
@@ -1317,6 +1344,11 @@ export default function HomePage() {
                     throw new Error(result.error || `API deletion failed with status ${response.status}`);
                 }
                 console.log('API deletion successful:', result);
+
+                if (referenceImageFilenames.length > 0) {
+                    console.log('Deleting reference images from IndexedDB:', referenceImageFilenames);
+                    await deleteIndexedDbFiles(referenceImageFilenames);
+                }
             }
 
             setHistory((prevHistory) => prevHistory.filter((h) => h.timestamp !== timestamp));
@@ -1352,6 +1384,8 @@ export default function HomePage() {
     };
 
     const handleReusePrompt = (prompt: string, targetMode: 'generate' | 'edit' | 'video') => {
+        // TODO: Before re-enabling the video UI, keep history prompt reuse from
+        // switching into `video` mode unless the video form/output are mounted again.
         if (targetMode === 'video') {
             setVideoPrompt(prompt);
             setMode('video');
@@ -1421,7 +1455,7 @@ export default function HomePage() {
                         <DialogDescription>
                             {effectiveStorageModeClient === 'indexeddb'
                                 ? 'This permanently removes every history entry and deletes all locally stored images from IndexedDB. This cannot be undone.'
-                                : 'This permanently removes every history entry. This cannot be undone.'}
+                                : 'This permanently removes every history entry and deletes any locally stored reference images from IndexedDB. This cannot be undone.'}
                         </DialogDescription>
                     </DialogHeader>
                     <DialogFooter>
