@@ -4,6 +4,7 @@ import type { HistoryMetadata } from '@/app/page';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
     Dialog,
     DialogContent,
@@ -25,7 +26,6 @@ import {
     ImagePlus,
     Sparkles as SparklesIcon,
     Trash2,
-    ArrowUpRight,
     RotateCcw
 } from 'lucide-react';
 import Image from 'next/image';
@@ -156,6 +156,18 @@ export function HistoryPanel({
         }
     };
 
+    const handleReuseHistoryPrompt = (item: HistoryMetadata) => {
+        if (!item.prompt) return;
+
+        const referenceFilenames = item.referenceImageFilenames ?? [];
+        if (item.mode !== 'video' && referenceFilenames.length > 0 && onReuseWithReferences) {
+            onReuseWithReferences(item.prompt, referenceFilenames);
+            return;
+        }
+
+        onReusePrompt(item.prompt, item.mode);
+    };
+
     return (
         <Card className='flex h-full w-full flex-col overflow-hidden rounded-md border border-border bg-card shadow-[0_1px_0_0_var(--border)]'>
             <CardHeader className='flex flex-row items-start justify-between gap-4 border-b border-border px-5 py-4'>
@@ -189,6 +201,12 @@ export function HistoryPanel({
                             const itemKey = item.timestamp;
                             const originalStorageMode = item.storageModeUsed || 'fs';
                             const isAboveTheFoldThumbnail = itemIndex === 0;
+                            const referenceFilenames = item.referenceImageFilenames ?? [];
+                            const hasReusablePrompt = item.prompt.trim().length > 0;
+                            const reuseLabel =
+                                referenceFilenames.length > 0 && item.mode !== 'video' && onReuseWithReferences
+                                    ? 'Reuse prompt and references'
+                                    : 'Reuse prompt';
 
                             const isVideo = item.mode === 'video';
 
@@ -293,23 +311,13 @@ export function HistoryPanel({
                                                 </p>
                                             </>
                                         )}
-                                        {item.referenceImageFilenames && item.referenceImageFilenames.length > 0 && (
+                                        {referenceFilenames.length > 0 && (
                                             <div className='mt-1.5'>
-                                                <div className='flex items-center justify-between gap-2'>
+                                                <div className='flex items-center gap-2'>
                                                     <span className='text-[11px] font-medium text-foreground/90'>References:</span>
-                                                    {onReuseWithReferences && (
-                                                        <Button
-                                                            variant='outline'
-                                                            size='sm'
-                                                            onClick={() => onReuseWithReferences(item.prompt, item.referenceImageFilenames!)}
-                                                            className='h-5 gap-1 border-border px-1.5 text-[10px] text-muted-foreground hover:bg-muted/60 hover:text-foreground'>
-                                                            <RotateCcw className='h-3 w-3' />
-                                                            Reuse
-                                                        </Button>
-                                                    )}
                                                 </div>
                                                 <div className='mt-1 flex flex-wrap gap-1'>
-                                                    {item.referenceImageFilenames.map((refFilename) => {
+                                                    {referenceFilenames.map((refFilename) => {
                                                         const src = getImageSrc(refFilename);
                                                         return src ? (
                                                             <Image
@@ -361,15 +369,16 @@ export function HistoryPanel({
                                                         <Button
                                                             variant='outline'
                                                             size='sm'
+                                                            disabled={!hasReusablePrompt}
                                                             onClick={() => {
-                                                                if (item.prompt) {
-                                                                    onReusePrompt(item.prompt, item.mode);
+                                                                if (hasReusablePrompt) {
+                                                                    handleReuseHistoryPrompt(item);
                                                                     setOpenPromptDialogTimestamp(null);
                                                                 }
                                                             }}
                                                             className='border-border text-foreground/90 hover:bg-muted hover:text-foreground'>
-                                                            <ArrowUpRight className='mr-2 h-4 w-4' />
-                                                            Use Prompt
+                                                            <RotateCcw className='mr-2 h-4 w-4' />
+                                                            {reuseLabel}
                                                         </Button>
                                                         <Button
                                                             variant='outline'
@@ -395,6 +404,21 @@ export function HistoryPanel({
                                                     </DialogFooter>
                                                 </DialogContent>
                                             </Dialog>
+                                            <Tooltip>
+                                                <TooltipTrigger asChild>
+                                                    <Button
+                                                        type='button'
+                                                        variant='outline'
+                                                        size='icon'
+                                                        disabled={!hasReusablePrompt}
+                                                        onClick={() => handleReuseHistoryPrompt(item)}
+                                                        aria-label={reuseLabel}
+                                                        className='h-6 w-6 border-border bg-background text-muted-foreground hover:bg-muted/60 hover:text-foreground disabled:opacity-40'>
+                                                        <RotateCcw size={13} />
+                                                    </Button>
+                                                </TooltipTrigger>
+                                                <TooltipContent side='top'>{reuseLabel}</TooltipContent>
+                                            </Tooltip>
                                             <Dialog
                                                 open={itemPendingDeleteConfirmation?.timestamp === item.timestamp}
                                                 onOpenChange={(isOpen) => {

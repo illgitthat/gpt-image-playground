@@ -1383,7 +1383,7 @@ export default function HomePage() {
         setItemToDeleteConfirm(null);
     };
 
-    const handleReusePrompt = (prompt: string, targetMode: 'generate' | 'edit' | 'video') => {
+    const applyHistoryPrompt = (prompt: string, targetMode: 'generate' | 'edit' | 'video') => {
         // TODO: Before re-enabling the video UI, keep history prompt reuse from
         // switching into `video` mode unless the video form/output are mounted again.
         if (targetMode === 'video') {
@@ -1396,9 +1396,17 @@ export default function HomePage() {
         }
     };
 
+    const finishHistoryPromptReuse = () => {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+
+    const handleReusePrompt = (prompt: string, targetMode: 'generate' | 'edit' | 'video') => {
+        applyHistoryPrompt(prompt, targetMode);
+        finishHistoryPromptReuse();
+    };
+
     const handleReuseWithReferences = async (prompt: string, referenceFilenames: string[]) => {
-        setGenPrompt(prompt);
-        setMode('generate');
+        applyHistoryPrompt(prompt, 'generate');
         setError(null);
         setLatestImageBatch(null);
         setImageOutputView('grid');
@@ -1430,9 +1438,7 @@ export default function HomePage() {
 
         setGenReferenceImages(files);
         setGenReferenceImagePreviewUrls(previewUrls);
-
-        // Scroll to top so the user sees the form
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+        finishHistoryPromptReuse();
     };
 
     return (
