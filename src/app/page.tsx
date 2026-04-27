@@ -136,15 +136,13 @@ export default function HomePage() {
     const [videoElapsedSeconds, setVideoElapsedSeconds] = React.useState(0);
     const videoTimerRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
 
-    // Streaming previews are on by default (auto-disabled when multiple images are requested)
+    // Keep the response on the SSE path for all image requests so reverse proxies
+    // don't time out while waiting on long-running generations.
     const [partialImages] = React.useState<1 | 2 | 3>(3);
     // Streaming preview images (base64 data URLs for partial images during streaming)
     const [streamingPreviewImages, setStreamingPreviewImages] = React.useState<Map<number, string>>(new Map());
 
-    const isStreamingAllowed = React.useMemo(() => {
-        if (mode === 'generate') return genN[0] === 1;
-        return false;
-    }, [mode, genN]);
+    const isStreamingAllowed = mode === 'generate';
 
     const getImageSrc = React.useCallback(
         (filename: string): string | undefined => {
@@ -970,6 +968,17 @@ export default function HomePage() {
             }
 
             // Non-streaming response handling (original code)
+            if (!contentType?.includes('application/json')) {
+                const responseText = await response.text();
+                const normalizedText = responseText.replace(/\s+/g, ' ').trim();
+                const fallbackMessage =
+                    normalizedText.startsWith('<!DOCTYPE') || normalizedText.startsWith('<html')
+                        ? `API request failed with status ${response.status}`
+                        : normalizedText || `API request failed with status ${response.status}`;
+
+                throw new Error(fallbackMessage);
+            }
+
             const result = await response.json();
 
             if (!response.ok) {
@@ -1529,7 +1538,7 @@ export default function HomePage() {
                                 setReferenceImages={setGenReferenceImages}
                                 setReferenceImagePreviewUrls={setGenReferenceImagePreviewUrls}
                                 maxReferenceImages={MAX_REFERENCE_IMAGES}
-                                streamingAllowed={genN[0] === 1}
+                                streamingAllowed={isStreamingAllowed}
                                 onEnhancePrompt={() => handlePromptEnhance('generate')}
                                 isEnhancingPrompt={isEnhancingGenPrompt}
                                 enhanceError={genPromptEnhanceError}
