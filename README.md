@@ -222,12 +222,14 @@ Open [http://localhost:3000](http://localhost:3000) in your web browser. You sho
 ```bash
 bun install
 bun run build
-sudo cp ./deploy/gpt-image-playground.service /etc/systemd/system/   # or wherever you store it
+sudo cp ./deploy/gpt-image-playground.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable gpt-image-playground
 sudo systemctl restart gpt-image-playground
 sudo systemctl status gpt-image-playground
 ```
+
+Before starting the service, update the unit file for your host. In most setups that means changing the service user, working directory, Bun path, and port.
 
 2. Manage the service:
 
@@ -238,9 +240,9 @@ sudo systemctl restart gpt-image-playground
 sudo systemctl stop gpt-image-playground
 ```
 
-Notes:
+If you are fronting the app with a reverse proxy or CDN, use long upstream timeouts (around `600s`) and disable proxy buffering. Image generations can run for a few minutes, and the partial-image streaming path uses SSE, so aggressive proxy defaults can cut requests off early.
 
-- Ensure `.env.local` (or exported env vars) is available in the project root so Next.js can read it when systemd starts the process.
+Make sure `.env.local` (or equivalent exported environment variables) is available on the server before starting the process.
 
 ## 🤝 Contributing
 
