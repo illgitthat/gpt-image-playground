@@ -3,7 +3,7 @@
 import { Button } from '@/components/ui/button';
 import { ImageLightbox, type LightboxMedia } from '@/components/image-lightbox';
 import { cn } from '@/lib/utils';
-import { Loader2, Send, Grid, Download, Maximize2, ImagePlus, Clock } from 'lucide-react';
+import { Loader2, Send, Grid, Download, Maximize2, ImagePlus } from 'lucide-react';
 import Image from 'next/image';
 import * as React from 'react';
 
@@ -91,10 +91,9 @@ function GenerationLoader({
 
     return (
         <div className='flex flex-col items-center justify-center gap-4'>
-            {/* Animated ring with elapsed time */}
+            {/* Elapsed time with spinner */}
             <div className='relative flex h-20 w-20 items-center justify-center'>
-                <div className='generation-ring absolute inset-0 rounded-full' />
-                <div className='generation-breathe absolute inset-2.5 rounded-full bg-primary/15' />
+                <Loader2 className='absolute h-16 w-16 animate-spin text-primary/20' />
                 <span className='relative font-mono text-xs tabular-nums text-foreground/80'>
                     {formatElapsed(elapsedSeconds)}
                 </span>
@@ -209,42 +208,75 @@ export function ImageOutput({
     return (
         <div className='relative flex h-full min-h-[300px] w-full flex-col items-center justify-between gap-4 overflow-hidden rounded-md border border-border bg-card p-5 shadow-[0_1px_0_0_var(--border)]'>
             <div className='absolute right-5 top-4 font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground'>
-                {isLoading ? (
-                    <span className='flex items-center gap-1.5'>
-                        <Clock className='h-3 w-3' />
-                        {formatElapsed(elapsedSeconds)}
-                    </span>
-                ) : imageBatch && imageBatch.length > 0 ? `${typeof viewMode === 'number' ? viewMode + 1 : '·'} / ${imageBatch.length}` : ''}
+                {!isLoading && imageBatch && imageBatch.length > 0 ? `${typeof viewMode === 'number' ? viewMode + 1 : '·'} / ${imageBatch.length}` : ''}
             </div>
-            <div className='relative mt-8 flex h-full w-full flex-grow items-center justify-center overflow-hidden'>
+            <div className='relative flex h-full w-full flex-grow items-center justify-center overflow-hidden'>
                 {isLoading ? (
                     streamingPreviewImages && streamingPreviewImages.size > 0 ? (
-                        // Show streaming preview images - single image centered like final view
-                        <div className='relative flex h-full w-full items-center justify-center'>
-                            {/* Show the latest preview image (highest index) */}
-                            {(() => {
-                                const entries = Array.from(streamingPreviewImages.entries());
-                                const latestEntry = entries[entries.length - 1];
-                                if (!latestEntry) return null;
-                                const [, dataUrl] = latestEntry;
-                                return (
-                                    <Image
-                                        src={dataUrl}
-                                        alt='Streaming preview'
-                                        width={512}
-                                        height={512}
-                                        className='h-auto w-auto max-h-full max-w-full object-contain'
-                                        style={responsiveContainImageStyle}
-                                        unoptimized
-                                    />
-                                );
-                            })()}
-                            {/* Overlay loader at bottom center */}
-                            <div className='absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full bg-background/70 px-3 py-1.5 text-foreground/90'>
-                                <Loader2 className='h-4 w-4 animate-spin' />
-                                <p className='text-sm'>Streaming...</p>
+                        // Show streaming preview images
+                        streamingPreviewImages.size === 1 ? (
+                            // Single image: centered like final view
+                            <div className='relative flex h-full w-full items-center justify-center'>
+                                {(() => {
+                                    const entries = Array.from(streamingPreviewImages.entries());
+                                    const latestEntry = entries[entries.length - 1];
+                                    if (!latestEntry) return null;
+                                    const [, dataUrl] = latestEntry;
+                                    return (
+                                        <div className='relative'>
+                                            <Image
+                                                src={dataUrl}
+                                                alt='Streaming preview — still refining'
+                                                width={512}
+                                                height={512}
+                                                className='h-auto w-auto max-h-full max-w-full object-contain'
+                                                style={responsiveContainImageStyle}
+                                                unoptimized
+                                            />
+                                            {/* Gradient scrim anchored to image bottom */}
+                                            <div className='pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/50 to-transparent' />
+                                            {/* Status pill anchored to image bottom */}
+                                            <div className='absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full bg-background/80 px-3 py-1.5 backdrop-blur-sm shadow-sm'>
+                                                <Loader2 className='h-3.5 w-3.5 animate-spin text-primary' />
+                                                <p className='text-xs font-medium text-foreground/90'>Refining — not the final image</p>
+                                                <span className='font-mono text-[10px] tabular-nums text-muted-foreground'>{formatElapsed(elapsedSeconds)}</span>
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
                             </div>
-                        </div>
+                        ) : (
+                            // Multiple images: grid with streaming previews + placeholders
+                            <div className='relative flex h-full w-full flex-col items-center justify-center gap-3'>
+                                <div className={`grid ${getGridColsClass(loadingCount ?? streamingPreviewImages.size)} max-h-full w-full max-w-full gap-2 p-1`}>
+                                    {Array.from({ length: loadingCount ?? streamingPreviewImages.size }, (_, i) => {
+                                        const preview = streamingPreviewImages.get(i);
+                                        return (
+                                            <div key={i} className={`relative aspect-square overflow-hidden rounded-md bg-muted/20 ${preview ? 'border border-primary/25 shadow-[0_0_0_1px_var(--primary)/10]' : 'border border-dashed border-border'}`}>
+                                                {preview ? (
+                                                    <Image
+                                                        src={preview}
+                                                        alt={`Streaming preview ${i + 1} — still refining`}
+                                                        fill
+                                                        style={{ objectFit: 'contain' }}
+                                                        unoptimized
+                                                    />
+                                                ) : (
+                                                    <div className='flex h-full w-full flex-col items-center justify-center gap-1.5'>
+                                                        <Loader2 className='h-5 w-5 animate-spin text-muted-foreground/30' />
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                                <div className='flex items-center gap-2 rounded-full bg-background/80 px-3 py-1.5 backdrop-blur-sm shadow-sm'>
+                                    <Loader2 className='h-3.5 w-3.5 animate-spin text-primary' />
+                                    <p className='text-xs font-medium text-foreground/90'>Refining — not final results</p>
+                                    <span className='font-mono text-[10px] tabular-nums text-muted-foreground'>{formatElapsed(elapsedSeconds)}</span>
+                                </div>
+                            </div>
+                        )
                     ) : baseImagePreviewUrl ? (
                         <div className='relative flex h-full w-full items-center justify-center'>
                             <Image

@@ -196,26 +196,9 @@
   .nudge {
     animation: nudge 1.4s ease-in-out infinite;
   }
-  @keyframes generation-rotate {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
-  }
-  @keyframes generation-breathe {
-    0%, 100% { transform: scale(1); opacity: 0.25; }
-    50% { transform: scale(1.12); opacity: 0.08; }
-  }
   @keyframes shimmer-slide {
     0% { transform: translateX(-100%); }
     100% { transform: translateX(200%); }
-  }
-  .generation-ring {
-    background: conic-gradient(from 0deg, transparent 0%, var(--primary) 25%, transparent 50%);
-    animation: generation-rotate 2.5s linear infinite;
-    -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2.5px));
-    mask: radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2.5px));
-  }
-  .generation-breathe {
-    animation: generation-breathe 3s ease-in-out infinite;
   }
   .generation-progress-fill {
     overflow: hidden;
@@ -235,16 +218,11 @@
     .rise-in,
     .attention-pulse,
     .nudge,
-    .generation-ring,
-    .generation-breathe,
     .generation-progress-fill::after {
       animation: none !important;
     }
     .attention-pulse {
       border-color: oklch(0.86 0.20 125 / 0.7);
-    }
-    .generation-ring {
-      background: conic-gradient(from 0deg, transparent 0%, var(--primary) 25%, transparent 50%);
     }
   }
 }
