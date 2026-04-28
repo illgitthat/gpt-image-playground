@@ -20,6 +20,7 @@ type StreamingEvent = {
         path?: string;
         output_format: string;
     }>;
+    failures?: GenerationFailure[];
     error?: string;
 };
 
@@ -39,6 +40,11 @@ type SavedImageData = {
     b64_json: string;
     path?: string;
     output_format: string;
+};
+
+type GenerationFailure = {
+    index: number;
+    error: string;
 };
 
 function addUsageValue(left?: number, right?: number): number | undefined {
@@ -203,8 +209,73 @@ type GeneratedImageResult = {
     usage?: ApiUsage;
 };
 
+type SettledGenerationBatch = {
+    results: GeneratedImageResult[];
+    failures: GenerationFailure[];
+    usage?: ApiUsage;
+};
+
 function toRequestOptions(signal?: AbortSignal): { signal: AbortSignal } | undefined {
     return signal ? { signal } : undefined;
+}
+
+function getErrorMessage(error: unknown): string {
+    if (error instanceof Error) {
+        return error.message;
+    }
+
+    if (typeof error === 'string') {
+        return error;
+    }
+
+    return 'Unknown image generation error.';
+}
+
+function formatFailureMessage(failures: GenerationFailure[], totalRequested: number): string {
+    if (failures.length === 0) {
+        return '';
+    }
+
+    if (failures.length === totalRequested) {
+        if (failures.length === 1) {
+            return failures[0].error;
+        }
+
+        return `Failed to generate all ${totalRequested} images.`;
+    }
+
+    const failedImages = failures.map((failure) => `#${failure.index + 1}`).join(', ');
+    return `${failures.length} of ${totalRequested} image${failures.length === 1 ? '' : 's'} failed (${failedImages}). Successful images are shown below.`;
+}
+
+async function settleGenerationTasks(tasks: Promise<GeneratedImageResult>[]): Promise<SettledGenerationBatch> {
+    const settledTasks = await Promise.allSettled(tasks);
+    const results: GeneratedImageResult[] = [];
+    const failures: GenerationFailure[] = [];
+    let usage: ApiUsage | undefined;
+
+    settledTasks.forEach((task, index) => {
+        if (task.status === 'fulfilled') {
+            results.push(task.value);
+            usage = mergeUsage(usage, task.value.usage);
+            return;
+        }
+
+        if (!(task.reason instanceof Error && task.reason.name === 'AbortError')) {
+            console.error(`Image generation failed for index ${index}:`, task.reason);
+        }
+
+        failures.push({
+            index,
+            error: getErrorMessage(task.reason)
+        });
+    });
+
+    return {
+        results: results.toSorted((left, right) => left.index - right.index),
+        failures,
+        usage
+    };
 }
 
 async function generateSingleImage({
@@ -563,18 +634,46 @@ export async function POST(request: NextRequest) {
                                                 )
                                             );
                                         }
-
                                         return result;
-                                    })
-                                    .catch((error) => {
-                                        if (!upstreamController.signal.aborted) {
-                                            upstreamController.abort();
-                                        }
-                                        throw error;
                                     })
                             );
 
-                            generationResults = await Promise.all(generationTasks);
+                            const settledBatch = await settleGenerationTasks(generationTasks);
+                            generationResults = settledBatch.results;
+
+                            if (closed) {
+                                return;
+                            }
+
+                            const failureMessage = formatFailureMessage(settledBatch.failures, maxImages);
+                            const savedImagesData = settledBatch.results.map((result) => result.savedImage);
+
+                            if (savedImagesData.length === 0) {
+                                safeEnqueue(
+                                    encoder.encode(
+                                        sseEvent({
+                                            type: 'error',
+                                            error: failureMessage || 'No image was generated',
+                                            ...(settledBatch.failures.length > 0 ? { failures: settledBatch.failures } : {})
+                                        })
+                                    )
+                                );
+                                safeClose();
+                                return;
+                            }
+
+                            safeEnqueue(
+                                encoder.encode(
+                                    sseEvent({
+                                        type: 'done',
+                                        images: savedImagesData,
+                                        usage: settledBatch.usage,
+                                        ...(failureMessage ? { error: failureMessage, failures: settledBatch.failures } : {})
+                                    })
+                                )
+                            );
+                            safeClose();
+                            return;
                         }
 
                         if (closed) {
@@ -649,7 +748,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Non-streaming response
-        const generationResults = await Promise.all(
+        const settledBatch = await settleGenerationTasks(
             Array.from({ length: maxImages }, (_, index) =>
                 generateSingleImage({
                     index,
@@ -663,18 +762,24 @@ export async function POST(request: NextRequest) {
             )
         );
 
-        const orderedResults = generationResults.toSorted((left, right) => left.index - right.index);
-        const savedImagesData = orderedResults.map((result) => result.savedImage);
-        const aggregatedUsage = orderedResults.reduce<ApiUsage | undefined>(
-            (total, result) => mergeUsage(total, result.usage),
-            undefined
-        );
+        const savedImagesData = settledBatch.results.map((result) => result.savedImage);
+        const failureMessage = formatFailureMessage(settledBatch.failures, maxImages);
 
         if (savedImagesData.length === 0) {
-            return NextResponse.json({ error: 'Failed to generate any images.' }, { status: 500 });
+            return NextResponse.json(
+                {
+                    error: failureMessage || 'Failed to generate any images.',
+                    ...(settledBatch.failures.length > 0 ? { failures: settledBatch.failures } : {})
+                },
+                { status: 500 }
+            );
         }
 
-        return NextResponse.json({ images: savedImagesData, usage: aggregatedUsage });
+        return NextResponse.json({
+            images: savedImagesData,
+            usage: settledBatch.usage,
+            ...(failureMessage ? { error: failureMessage, failures: settledBatch.failures } : {})
+        });
     } catch (error: unknown) {
         console.error('Error in /api/images:', error);
 
