@@ -836,14 +836,15 @@ export default function HomePage() {
                     console.log('SSE Event:', event.type);
 
                     if (event.type === 'partial_image') {
-                        if (typeof event.b64_json !== 'string' || event.b64_json.length === 0) {
+                        const partialImageB64 = event.b64_json;
+                        if (typeof partialImageB64 !== 'string' || partialImageB64.trim().length === 0) {
                             console.warn('Ignoring malformed partial_image SSE event:', event);
                             return;
                         }
 
                         // Update streaming preview with partial image
                         const imageIndex = typeof event.index === 'number' ? event.index : 0;
-                        const dataUrl = `data:image/png;base64,${event.b64_json}`;
+                        const dataUrl = `data:image/png;base64,${partialImageB64}`;
                         setStreamingPreviewImages((prev) => {
                             const newMap = new Map(prev);
                             newMap.set(imageIndex, dataUrl);
