@@ -186,6 +186,137 @@ function sseEvent(event: StreamingEvent): string {
     return `data: ${JSON.stringify(event)}\n\n`;
 }
 
+type GenerateImageOptions = {
+    index: number;
+    apiClient: OpenAI;
+    inputContent: string | OpenAI.Responses.ResponseInputItem[];
+    imageGenTool: OpenAI.Responses.Tool;
+    timestamp: number;
+    fileExtension: ValidOutputFormat;
+    effectiveStorageMode: 'fs' | 'indexeddb';
+    signal?: AbortSignal;
+};
+
+type GeneratedImageResult = {
+    index: number;
+    savedImage: SavedImageData;
+    usage?: ApiUsage;
+};
+
+function toRequestOptions(signal?: AbortSignal): { signal: AbortSignal } | undefined {
+    return signal ? { signal } : undefined;
+}
+
+async function generateSingleImage({
+    index,
+    apiClient,
+    inputContent,
+    imageGenTool,
+    timestamp,
+    fileExtension,
+    effectiveStorageMode,
+    signal
+}: GenerateImageOptions): Promise<GeneratedImageResult> {
+    const response = await apiClient.responses.create(
+        {
+            model: 'gpt-5.3-chat',
+            input: inputContent,
+            tools: [imageGenTool]
+        },
+        toRequestOptions(signal)
+    );
+
+    const imageOutput = response.output?.find((item) => item.type === 'image_generation_call') as
+        | { type: 'image_generation_call'; result?: string }
+        | undefined;
+
+    if (!imageOutput?.result) {
+        throw new Error(`No image was generated for index ${index}.`);
+    }
+
+    const filename = `${timestamp}-${index}.${fileExtension}`;
+    const savedImage = await persistGeneratedImage(
+        filename,
+        imageOutput.result,
+        fileExtension,
+        effectiveStorageMode
+    );
+
+    return {
+        index,
+        savedImage,
+        usage: (response.usage as ApiUsage | null | undefined) ?? undefined
+    };
+}
+
+async function generateSingleImageWithPartialStreaming(
+    options: GenerateImageOptions & {
+        onPartialImage: (payload: { partialImageB64: string; partialImageIndex: number }) => void;
+    }
+): Promise<GeneratedImageResult> {
+    const {
+        index,
+        apiClient,
+        inputContent,
+        imageGenTool,
+        timestamp,
+        fileExtension,
+        effectiveStorageMode,
+        signal,
+        onPartialImage
+    } = options;
+
+    const response = await apiClient.responses.create(
+        {
+            model: 'gpt-5.3-chat',
+            input: inputContent,
+            tools: [imageGenTool],
+            stream: true
+        },
+        toRequestOptions(signal)
+    );
+
+    let finalImageB64: string | undefined;
+    let partialImageCount = 0;
+    let usage: ApiUsage | undefined;
+
+    for await (const event of response as AsyncIterable<{ type: string; [key: string]: unknown }>) {
+        if (event.type === 'response.image_generation_call.partial_image') {
+            const partialB64 = event.partial_image_b64 as string | undefined;
+            const partialIndex = event.partial_image_index as number | undefined;
+
+            if (partialB64) {
+                onPartialImage({
+                    partialImageB64: partialB64,
+                    partialImageIndex: partialIndex ?? partialImageCount
+                });
+                partialImageCount++;
+            }
+        } else if (event.type === 'response.output_item.done') {
+            const item = event.item as { type?: string; result?: string } | undefined;
+            if (item?.type === 'image_generation_call' && item.result) {
+                finalImageB64 = item.result;
+            }
+        } else if (event.type === 'response.completed' || event.type === 'response.done') {
+            const completedResponse = event.response as { usage?: ApiUsage } | undefined;
+            usage = completedResponse?.usage;
+        }
+    }
+
+    if (!finalImageB64) {
+        throw new Error(`No image was generated for index ${index}.`);
+    }
+
+    const filename = `${timestamp}-${index}.${fileExtension}`;
+    const savedImage = await persistGeneratedImage(filename, finalImageB64, fileExtension, effectiveStorageMode);
+
+    return {
+        index,
+        savedImage,
+        usage
+    };
+}
+
 export async function POST(request: NextRequest) {
     console.log('Received POST request to /api/images');
 
@@ -302,6 +433,7 @@ export async function POST(request: NextRequest) {
 
         const timestamp = Date.now();
         const fileExtension = validateOutputFormat(output_format);
+        const maxImages = Math.min(n, 5);
 
         // Streaming response
         if (useStreaming) {
@@ -317,6 +449,7 @@ export async function POST(request: NextRequest) {
             const stream = new ReadableStream({
                 async start(controller) {
                     let closed = false;
+                    let clientDisconnected = false;
                     const safeEnqueue = (chunk: Uint8Array) => {
                         if (closed) return;
                         try {
@@ -349,6 +482,7 @@ export async function POST(request: NextRequest) {
                     // Abort upstream call if the browser disconnects.
                     const upstreamController = new AbortController();
                     const onClientAbort = () => {
+                        clientDisconnected = true;
                         upstreamController.abort();
                         safeClose();
                     };
@@ -359,134 +493,100 @@ export async function POST(request: NextRequest) {
                     clientAbort.addEventListener('abort', onClientAbort, { once: true });
 
                     try {
-                        const savedImagesData: SavedImageData[] = [];
-                        let aggregatedUsage: ApiUsage | undefined;
-                        const maxImages = Math.min(n, 5);
+                        let generationResults: GeneratedImageResult[];
 
-                        for (let i = 0; i < maxImages; i++) {
-                            if (closed) break;
+                        if (usePartialImageStreaming) {
+                            const result = await generateSingleImageWithPartialStreaming({
+                                index: 0,
+                                apiClient,
+                                inputContent,
+                                imageGenTool,
+                                timestamp,
+                                fileExtension,
+                                effectiveStorageMode,
+                                signal: upstreamController.signal,
+                                onPartialImage: ({ partialImageB64, partialImageIndex }) => {
+                                    if (closed) {
+                                        return;
+                                    }
 
-                            if (usePartialImageStreaming) {
-                                const response = await apiClient.responses.create(
-                                    {
-                                        model: 'gpt-5.3-chat',
-                                        input: inputContent,
-                                        tools: [imageGenTool],
-                                        stream: true
-                                    },
-                                    { signal: upstreamController.signal }
-                                );
+                                    safeEnqueue(
+                                        encoder.encode(
+                                            sseEvent({
+                                                type: 'partial_image',
+                                                index: 0,
+                                                partial_image_index: partialImageIndex,
+                                                b64_json: partialImageB64
+                                            })
+                                        )
+                                    );
+                                }
+                            });
 
-                                let finalImageB64: string | undefined;
-                                let partialImageCount = 0;
-                                let usage: ApiUsage | undefined;
+                            if (closed) {
+                                return;
+                            }
 
-                                for await (const event of response as AsyncIterable<{ type: string; [key: string]: unknown }>) {
-                                    if (closed) break;
-                                    if (event.type === 'response.image_generation_call.partial_image') {
-                                        const partialB64 = event.partial_image_b64 as string | undefined;
-                                        const partialIndex = event.partial_image_index as number | undefined;
-                                        if (partialB64) {
+                            generationResults = [result];
+                            safeEnqueue(
+                                encoder.encode(
+                                    sseEvent({
+                                        type: 'completed',
+                                        index: result.index,
+                                        filename: result.savedImage.filename,
+                                        output_format: result.savedImage.output_format
+                                    })
+                                )
+                            );
+                        } else {
+                            const generationTasks = Array.from({ length: maxImages }, (_, index) =>
+                                generateSingleImage({
+                                    index,
+                                    apiClient,
+                                    inputContent,
+                                    imageGenTool,
+                                    timestamp,
+                                    fileExtension,
+                                    effectiveStorageMode,
+                                    signal: upstreamController.signal
+                                })
+                                    .then((result) => {
+                                        if (!closed) {
                                             safeEnqueue(
                                                 encoder.encode(
                                                     sseEvent({
-                                                        type: 'partial_image',
-                                                        index: i,
-                                                        partial_image_index: partialIndex ?? partialImageCount,
-                                                        b64_json: partialB64
+                                                        type: 'completed',
+                                                        index: result.index,
+                                                        filename: result.savedImage.filename,
+                                                        output_format: result.savedImage.output_format
                                                     })
                                                 )
                                             );
-                                            partialImageCount++;
                                         }
-                                    } else if (event.type === 'response.output_item.done') {
-                                        const item = event.item as { type?: string; result?: string } | undefined;
-                                        if (item?.type === 'image_generation_call' && item.result) {
-                                            finalImageB64 = item.result;
+
+                                        return result;
+                                    })
+                                    .catch((error) => {
+                                        if (!upstreamController.signal.aborted) {
+                                            upstreamController.abort();
                                         }
-                                    } else if (event.type === 'response.completed' || event.type === 'response.done') {
-                                        const completedResponse = event.response as { usage?: ApiUsage } | undefined;
-                                        usage = completedResponse?.usage;
-                                    }
-                                }
+                                        throw error;
+                                    })
+                            );
 
-                                if (closed) {
-                                    break;
-                                }
-
-                                if (!finalImageB64) {
-                                    throw new Error(`No image was generated for index ${i}.`);
-                                }
-
-                                aggregatedUsage = mergeUsage(aggregatedUsage, usage);
-
-                                const filename = `${timestamp}-${i}.${fileExtension}`;
-                                const savedImage = await persistGeneratedImage(
-                                    filename,
-                                    finalImageB64,
-                                    fileExtension,
-                                    effectiveStorageMode
-                                );
-                                savedImagesData.push(savedImage);
-
-                                safeEnqueue(
-                                    encoder.encode(
-                                        sseEvent({
-                                            type: 'completed',
-                                            index: i,
-                                            filename,
-                                            output_format: fileExtension
-                                        })
-                                    )
-                                );
-                            } else {
-                                const response = await apiClient.responses.create(
-                                    {
-                                        model: 'gpt-5.3-chat',
-                                        input: inputContent,
-                                        tools: [imageGenTool]
-                                    },
-                                    { signal: upstreamController.signal }
-                                );
-
-                                aggregatedUsage = mergeUsage(
-                                    aggregatedUsage,
-                                    (response.usage as ApiUsage | null | undefined) ?? undefined
-                                );
-
-                                const imageOutput = response.output?.find((item) => item.type === 'image_generation_call') as
-                                    | { type: 'image_generation_call'; result?: string }
-                                    | undefined;
-
-                                if (!imageOutput?.result) {
-                                    throw new Error(`No image was generated for index ${i}.`);
-                                }
-
-                                const filename = `${timestamp}-${i}.${fileExtension}`;
-                                const savedImage = await persistGeneratedImage(
-                                    filename,
-                                    imageOutput.result,
-                                    fileExtension,
-                                    effectiveStorageMode
-                                );
-                                savedImagesData.push(savedImage);
-
-                                safeEnqueue(
-                                    encoder.encode(
-                                        sseEvent({
-                                            type: 'completed',
-                                            index: i,
-                                            filename,
-                                            output_format: fileExtension
-                                        })
-                                    )
-                                );
-                            }
+                            generationResults = await Promise.all(generationTasks);
                         }
 
                         if (closed) {
                             return;
                         }
+
+                        const orderedResults = generationResults.toSorted((left, right) => left.index - right.index);
+                        const savedImagesData = orderedResults.map((result) => result.savedImage);
+                        const aggregatedUsage = orderedResults.reduce<ApiUsage | undefined>(
+                            (total, result) => mergeUsage(total, result.usage),
+                            undefined
+                        );
 
                         if (savedImagesData.length === 0) {
                             safeEnqueue(
@@ -512,9 +612,7 @@ export async function POST(request: NextRequest) {
                         safeClose();
                     } catch (error) {
                         // Suppress noise from intentional client-disconnect aborts.
-                        const isAbort =
-                            (error instanceof Error && error.name === 'AbortError') ||
-                            upstreamController.signal.aborted;
+                        const isAbort = clientDisconnected || (error instanceof Error && error.name === 'AbortError');
                         if (!isAbort) {
                             console.error('Streaming error:', error);
                             safeEnqueue(
@@ -551,30 +649,26 @@ export async function POST(request: NextRequest) {
         }
 
         // Non-streaming response
-        const savedImagesData: SavedImageData[] = [];
-        let aggregatedUsage: ApiUsage | undefined;
+        const generationResults = await Promise.all(
+            Array.from({ length: maxImages }, (_, index) =>
+                generateSingleImage({
+                    index,
+                    apiClient,
+                    inputContent,
+                    imageGenTool,
+                    timestamp,
+                    fileExtension,
+                    effectiveStorageMode
+                })
+            )
+        );
 
-        // Generate n images (Responses API generates one at a time)
-        for (let i = 0; i < Math.min(n, 5); i++) {
-            const response = await apiClient.responses.create({
-                model: 'gpt-5.3-chat',
-                input: inputContent,
-                tools: [imageGenTool]
-            });
-            aggregatedUsage = mergeUsage(aggregatedUsage, (response.usage as ApiUsage | null | undefined) ?? undefined);
-
-            // Extract image from response
-            const imageOutput = response.output?.find((item) => item.type === 'image_generation_call') as
-                | { type: 'image_generation_call'; result?: string }
-                | undefined;
-
-            if (imageOutput?.result) {
-                const filename = `${timestamp}-${i}.${fileExtension}`;
-                savedImagesData.push(
-                    await persistGeneratedImage(filename, imageOutput.result, fileExtension, effectiveStorageMode)
-                );
-            }
-        }
+        const orderedResults = generationResults.toSorted((left, right) => left.index - right.index);
+        const savedImagesData = orderedResults.map((result) => result.savedImage);
+        const aggregatedUsage = orderedResults.reduce<ApiUsage | undefined>(
+            (total, result) => mergeUsage(total, result.usage),
+            undefined
+        );
 
         if (savedImagesData.length === 0) {
             return NextResponse.json({ error: 'Failed to generate any images.' }, { status: 500 });
