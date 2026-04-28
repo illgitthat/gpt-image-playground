@@ -14,12 +14,7 @@ type StreamingEvent = {
     path?: string;
     output_format?: string;
     usage?: ApiUsage;
-    images?: Array<{
-        filename: string;
-        b64_json: string;
-        path?: string;
-        output_format: string;
-    }>;
+    images?: SavedImageData[];
     failures?: GenerationFailure[];
     error?: string;
 };

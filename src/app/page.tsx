@@ -836,6 +836,11 @@ export default function HomePage() {
                     console.log('SSE Event:', event.type);
 
                     if (event.type === 'partial_image') {
+                        if (typeof event.b64_json !== 'string' || event.b64_json.length === 0) {
+                            console.warn('Ignoring malformed partial_image SSE event:', event);
+                            return;
+                        }
+
                         // Update streaming preview with partial image
                         const imageIndex = typeof event.index === 'number' ? event.index : 0;
                         const dataUrl = `data:image/png;base64,${event.b64_json}`;
