@@ -14,12 +14,8 @@ type StreamingEvent = {
     path?: string;
     output_format?: string;
     usage?: ApiUsage;
-    images?: Array<{
-        filename: string;
-        b64_json: string;
-        path?: string;
-        output_format: string;
-    }>;
+    images?: SavedImageData[];
+    failures?: GenerationFailure[];
     error?: string;
 };
 
@@ -32,6 +28,18 @@ type ApiUsage = {
         image_tokens?: number;
         cached_tokens?: number;
     };
+};
+
+type SavedImageData = {
+    filename: string;
+    b64_json: string;
+    path?: string;
+    output_format: string;
+};
+
+type GenerationFailure = {
+    index: number;
+    error: string;
 };
 
 function addUsageValue(left?: number, right?: number): number | undefined {
@@ -154,9 +162,225 @@ function sha256(data: string): string {
     return crypto.createHash('sha256').update(data).digest('hex');
 }
 
+async function persistGeneratedImage(
+    filename: string,
+    b64_json: string,
+    output_format: ValidOutputFormat,
+    effectiveStorageMode: 'fs' | 'indexeddb'
+): Promise<SavedImageData> {
+    if (effectiveStorageMode === 'fs') {
+        const buffer = Buffer.from(b64_json, 'base64');
+        const filepath = path.join(outputDir, filename);
+        await fs.writeFile(filepath, buffer);
+    }
+
+    return {
+        filename,
+        b64_json,
+        output_format,
+        ...(effectiveStorageMode === 'fs' ? { path: `/api/image/${filename}` } : {})
+    };
+}
+
 // Helper to send SSE event
 function sseEvent(event: StreamingEvent): string {
     return `data: ${JSON.stringify(event)}\n\n`;
+}
+
+type GenerateImageOptions = {
+    index: number;
+    apiClient: OpenAI;
+    inputContent: string | OpenAI.Responses.ResponseInputItem[];
+    imageGenTool: OpenAI.Responses.Tool;
+    timestamp: number;
+    fileExtension: ValidOutputFormat;
+    effectiveStorageMode: 'fs' | 'indexeddb';
+    signal?: AbortSignal;
+};
+
+type GeneratedImageResult = {
+    index: number;
+    savedImage: SavedImageData;
+    usage?: ApiUsage;
+};
+
+type SettledGenerationBatch = {
+    results: GeneratedImageResult[];
+    failures: GenerationFailure[];
+    usage?: ApiUsage;
+};
+
+function toRequestOptions(signal?: AbortSignal): { signal: AbortSignal } | undefined {
+    return signal ? { signal } : undefined;
+}
+
+function getErrorMessage(error: unknown): string {
+    if (error instanceof Error) {
+        return error.message;
+    }
+
+    if (typeof error === 'string') {
+        return error;
+    }
+
+    return 'Unknown image generation error.';
+}
+
+function formatFailureMessage(failures: GenerationFailure[], totalRequested: number): string {
+    if (failures.length === 0) {
+        return '';
+    }
+
+    if (failures.length === totalRequested) {
+        if (failures.length === 1) {
+            return failures[0].error;
+        }
+
+        return `Failed to generate all ${totalRequested} images.`;
+    }
+
+    const failedImages = failures.map((failure) => `#${failure.index + 1}`).join(', ');
+    return `${failures.length} of ${totalRequested} image${failures.length === 1 ? '' : 's'} failed (${failedImages}). Successful images are shown below.`;
+}
+
+async function settleGenerationTasks(tasks: Promise<GeneratedImageResult>[]): Promise<SettledGenerationBatch> {
+    const settledTasks = await Promise.allSettled(tasks);
+    const results: GeneratedImageResult[] = [];
+    const failures: GenerationFailure[] = [];
+    let usage: ApiUsage | undefined;
+
+    settledTasks.forEach((task, index) => {
+        if (task.status === 'fulfilled') {
+            results.push(task.value);
+            usage = mergeUsage(usage, task.value.usage);
+            return;
+        }
+
+        if (!(task.reason instanceof Error && task.reason.name === 'AbortError')) {
+            console.error(`Image generation failed for index ${index}:`, task.reason);
+        }
+
+        failures.push({
+            index,
+            error: getErrorMessage(task.reason)
+        });
+    });
+
+    return {
+        results: results.toSorted((left, right) => left.index - right.index),
+        failures,
+        usage
+    };
+}
+
+async function generateSingleImage({
+    index,
+    apiClient,
+    inputContent,
+    imageGenTool,
+    timestamp,
+    fileExtension,
+    effectiveStorageMode,
+    signal
+}: GenerateImageOptions): Promise<GeneratedImageResult> {
+    const response = await apiClient.responses.create(
+        {
+            model: 'gpt-5.3-chat',
+            input: inputContent,
+            tools: [imageGenTool]
+        },
+        toRequestOptions(signal)
+    );
+
+    const imageOutput = response.output?.find((item) => item.type === 'image_generation_call') as
+        | { type: 'image_generation_call'; result?: string }
+        | undefined;
+
+    if (!imageOutput?.result) {
+        throw new Error(`No image was generated for index ${index}.`);
+    }
+
+    const filename = `${timestamp}-${index}.${fileExtension}`;
+    const savedImage = await persistGeneratedImage(
+        filename,
+        imageOutput.result,
+        fileExtension,
+        effectiveStorageMode
+    );
+
+    return {
+        index,
+        savedImage,
+        usage: (response.usage as ApiUsage | null | undefined) ?? undefined
+    };
+}
+
+async function generateSingleImageWithPartialStreaming(
+    options: GenerateImageOptions & {
+        onPartialImage: (payload: { partialImageB64: string; partialImageIndex: number }) => void;
+    }
+): Promise<GeneratedImageResult> {
+    const {
+        index,
+        apiClient,
+        inputContent,
+        imageGenTool,
+        timestamp,
+        fileExtension,
+        effectiveStorageMode,
+        signal,
+        onPartialImage
+    } = options;
+
+    const response = await apiClient.responses.create(
+        {
+            model: 'gpt-5.3-chat',
+            input: inputContent,
+            tools: [imageGenTool],
+            stream: true
+        },
+        toRequestOptions(signal)
+    );
+
+    let finalImageB64: string | undefined;
+    let partialImageCount = 0;
+    let usage: ApiUsage | undefined;
+
+    for await (const event of response as AsyncIterable<{ type: string; [key: string]: unknown }>) {
+        if (event.type === 'response.image_generation_call.partial_image') {
+            const partialB64 = event.partial_image_b64 as string | undefined;
+            const partialIndex = event.partial_image_index as number | undefined;
+
+            if (partialB64) {
+                onPartialImage({
+                    partialImageB64: partialB64,
+                    partialImageIndex: partialIndex ?? partialImageCount
+                });
+                partialImageCount++;
+            }
+        } else if (event.type === 'response.output_item.done') {
+            const item = event.item as { type?: string; result?: string } | undefined;
+            if (item?.type === 'image_generation_call' && item.result) {
+                finalImageB64 = item.result;
+            }
+        } else if (event.type === 'response.completed' || event.type === 'response.done') {
+            const completedResponse = event.response as { usage?: ApiUsage } | undefined;
+            usage = completedResponse?.usage;
+        }
+    }
+
+    if (!finalImageB64) {
+        throw new Error(`No image was generated for index ${index}.`);
+    }
+
+    const filename = `${timestamp}-${index}.${fileExtension}`;
+    const savedImage = await persistGeneratedImage(filename, finalImageB64, fileExtension, effectiveStorageMode);
+
+    return {
+        index,
+        savedImage,
+        usage
+    };
 }
 
 export async function POST(request: NextRequest) {
@@ -230,7 +454,8 @@ export async function POST(request: NextRequest) {
         const background = (formData.get('background') as 'auto' | 'opaque' | 'transparent') || 'auto';
         const effectiveBackground = model === 'gpt-image-2' ? 'auto' : background;
         const partialImages = parseInt((formData.get('partial_images') as string) || '0', 10);
-        const useStreaming = partialImages > 0 && n === 1;
+        const useStreaming = formData.get('stream') === 'true';
+        const usePartialImageStreaming = useStreaming && partialImages > 0 && n === 1;
 
         // Build the image generation tool with parameters
         const imageGenTool = {
@@ -240,7 +465,7 @@ export async function POST(request: NextRequest) {
             quality: quality === 'auto' ? undefined : quality,
             background: effectiveBackground === 'auto' ? undefined : effectiveBackground,
             output_format,
-            ...(useStreaming ? { partial_images: partialImages } : {})
+            ...(usePartialImageStreaming ? { partial_images: partialImages } : {})
         } as OpenAI.Responses.Tool;
 
         // Build input: check for optional reference images
@@ -274,10 +499,15 @@ export async function POST(request: NextRequest) {
 
         const timestamp = Date.now();
         const fileExtension = validateOutputFormat(output_format);
+        const maxImages = Math.min(n, 5);
 
         // Streaming response
         if (useStreaming) {
-            console.log('Using streaming mode with partial_images:', partialImages);
+            console.log(
+                usePartialImageStreaming
+                    ? `Using model-streamed image mode with partial_images: ${partialImages}`
+                    : `Using server-streamed batch mode for ${Math.min(n, 5)} image(s).`
+            );
 
             const encoder = new TextEncoder();
             const clientAbort = request.signal;
@@ -285,6 +515,7 @@ export async function POST(request: NextRequest) {
             const stream = new ReadableStream({
                 async start(controller) {
                     let closed = false;
+                    let clientDisconnected = false;
                     const safeEnqueue = (chunk: Uint8Array) => {
                         if (closed) return;
                         try {
@@ -317,6 +548,7 @@ export async function POST(request: NextRequest) {
                     // Abort upstream call if the browser disconnects.
                     const upstreamController = new AbortController();
                     const onClientAbort = () => {
+                        clientDisconnected = true;
                         upstreamController.abort();
                         safeClose();
                     };
@@ -327,97 +559,130 @@ export async function POST(request: NextRequest) {
                     clientAbort.addEventListener('abort', onClientAbort, { once: true });
 
                     try {
-                        const response = await apiClient.responses.create(
-                            {
-                                model: 'gpt-5.3-chat',
-                                input: inputContent,
-                                tools: [imageGenTool],
-                                stream: true
-                            },
-                            { signal: upstreamController.signal }
-                        );
+                        let generationResults: GeneratedImageResult[];
 
-                        let finalImageB64: string | undefined;
-                        let partialImageCount = 0;
-                        let usage: ApiUsage | undefined;
+                        if (usePartialImageStreaming) {
+                            const result = await generateSingleImageWithPartialStreaming({
+                                index: 0,
+                                apiClient,
+                                inputContent,
+                                imageGenTool,
+                                timestamp,
+                                fileExtension,
+                                effectiveStorageMode,
+                                signal: upstreamController.signal,
+                                onPartialImage: ({ partialImageB64, partialImageIndex }) => {
+                                    if (closed) {
+                                        return;
+                                    }
 
-                        // Process stream events
-                        for await (const event of response as AsyncIterable<{ type: string; [key: string]: unknown }>) {
-                            if (closed) break;
-                            if (event.type === 'response.image_generation_call.partial_image') {
-                                // Partial image event
-                                const partialB64 = event.partial_image_b64 as string | undefined;
-                                const partialIndex = event.partial_image_index as number | undefined;
-                                if (partialB64) {
                                     safeEnqueue(
                                         encoder.encode(
                                             sseEvent({
                                                 type: 'partial_image',
                                                 index: 0,
-                                                partial_image_index: partialIndex ?? partialImageCount,
-                                                b64_json: partialB64
+                                                partial_image_index: partialImageIndex,
+                                                b64_json: partialImageB64
                                             })
                                         )
                                     );
-                                    partialImageCount++;
                                 }
-                            } else if (event.type === 'response.output_item.done') {
-                                // Check if this is the final image
-                                const item = event.item as { type?: string; result?: string } | undefined;
-                                if (item?.type === 'image_generation_call' && item.result) {
-                                    finalImageB64 = item.result;
-                                }
-                            } else if (event.type === 'response.completed' || event.type === 'response.done') {
-                                // Extract usage from completed response
-                                const completedResponse = event.response as { usage?: ApiUsage } | undefined;
-                                usage = completedResponse?.usage;
+                            });
+
+                            if (closed) {
+                                return;
                             }
+
+                            generationResults = [result];
+                            safeEnqueue(
+                                encoder.encode(
+                                    sseEvent({
+                                        type: 'completed',
+                                        index: result.index,
+                                        filename: result.savedImage.filename,
+                                        output_format: result.savedImage.output_format
+                                    })
+                                )
+                            );
+                        } else {
+                            const generationTasks = Array.from({ length: maxImages }, (_, index) =>
+                                generateSingleImage({
+                                    index,
+                                    apiClient,
+                                    inputContent,
+                                    imageGenTool,
+                                    timestamp,
+                                    fileExtension,
+                                    effectiveStorageMode,
+                                    signal: upstreamController.signal
+                                })
+                                    .then((result) => {
+                                        if (!closed) {
+                                            safeEnqueue(
+                                                encoder.encode(
+                                                    sseEvent({
+                                                        type: 'completed',
+                                                        index: result.index,
+                                                        filename: result.savedImage.filename,
+                                                        output_format: result.savedImage.output_format
+                                                    })
+                                                )
+                                            );
+                                        }
+                                        return result;
+                                    })
+                            );
+
+                            const settledBatch = await settleGenerationTasks(generationTasks);
+                            generationResults = settledBatch.results;
+
+                            if (closed) {
+                                return;
+                            }
+
+                            const failureMessage = formatFailureMessage(settledBatch.failures, maxImages);
+                            const savedImagesData = settledBatch.results.map((result) => result.savedImage);
+
+                            if (savedImagesData.length === 0) {
+                                safeEnqueue(
+                                    encoder.encode(
+                                        sseEvent({
+                                            type: 'error',
+                                            error: failureMessage || 'No image was generated',
+                                            ...(settledBatch.failures.length > 0 ? { failures: settledBatch.failures } : {})
+                                        })
+                                    )
+                                );
+                                safeClose();
+                                return;
+                            }
+
+                            safeEnqueue(
+                                encoder.encode(
+                                    sseEvent({
+                                        type: 'done',
+                                        images: savedImagesData,
+                                        usage: settledBatch.usage,
+                                        ...(failureMessage ? { error: failureMessage, failures: settledBatch.failures } : {})
+                                    })
+                                )
+                            );
+                            safeClose();
+                            return;
                         }
 
                         if (closed) {
                             return;
                         }
 
-                        // Save final image and send done event
-                        if (finalImageB64) {
-                            const filename = `${timestamp}-0.${fileExtension}`;
+                        const orderedResults = generationResults.toSorted((left, right) => left.index - right.index);
+                        const savedImagesData = orderedResults.map((result) => result.savedImage);
+                        const aggregatedUsage = orderedResults.reduce<ApiUsage | undefined>(
+                            (total, result) => mergeUsage(total, result.usage),
+                            undefined
+                        );
 
-                            if (effectiveStorageMode === 'fs') {
-                                const buffer = Buffer.from(finalImageB64, 'base64');
-                                const filepath = path.join(outputDir, filename);
-                                await fs.writeFile(filepath, buffer);
-                            }
-
-                            safeEnqueue(
-                                encoder.encode(
-                                    sseEvent({
-                                        type: 'completed',
-                                        index: 0,
-                                        filename,
-                                        output_format: fileExtension
-                                    })
-                                )
-                            );
-
-                            safeEnqueue(
-                                encoder.encode(
-                                    sseEvent({
-                                        type: 'done',
-                                        images: [
-                                            {
-                                                filename,
-                                                b64_json: finalImageB64,
-                                                output_format: fileExtension,
-                                                ...(effectiveStorageMode === 'fs'
-                                                    ? { path: `/api/image/${filename}` }
-                                                    : {})
-                                            }
-                                        ],
-                                        usage
-                                    })
-                                )
-                            );
-                        } else {
+                        if (savedImagesData.length === 0) {
                             safeEnqueue(
                                 encoder.encode(
                                     sseEvent({
@@ -426,14 +691,22 @@ export async function POST(request: NextRequest) {
                                     })
                                 )
                             );
+                        } else {
+                            safeEnqueue(
+                                encoder.encode(
+                                    sseEvent({
+                                        type: 'done',
+                                        images: savedImagesData,
+                                        usage: aggregatedUsage
+                                    })
+                                )
+                            );
                         }
 
                         safeClose();
                     } catch (error) {
                         // Suppress noise from intentional client-disconnect aborts.
-                        const isAbort =
-                            (error instanceof Error && error.name === 'AbortError') ||
-                            upstreamController.signal.aborted;
+                        const isAbort = clientDisconnected || (error instanceof Error && error.name === 'AbortError');
                         if (!isAbort) {
                             console.error('Streaming error:', error);
                             safeEnqueue(
@@ -470,52 +743,38 @@ export async function POST(request: NextRequest) {
         }
 
         // Non-streaming response
-        const savedImagesData: Array<{
-            filename: string;
-            b64_json: string;
-            path?: string;
-            output_format: string;
-        }> = [];
-        let aggregatedUsage: ApiUsage | undefined;
+        const settledBatch = await settleGenerationTasks(
+            Array.from({ length: maxImages }, (_, index) =>
+                generateSingleImage({
+                    index,
+                    apiClient,
+                    inputContent,
+                    imageGenTool,
+                    timestamp,
+                    fileExtension,
+                    effectiveStorageMode
+                })
+            )
+        );
 
-        // Generate n images (Responses API generates one at a time)
-        for (let i = 0; i < Math.min(n, 5); i++) {
-            const response = await apiClient.responses.create({
-                model: 'gpt-5.3-chat',
-                input: inputContent,
-                tools: [imageGenTool]
-            });
-            aggregatedUsage = mergeUsage(aggregatedUsage, (response.usage as ApiUsage | null | undefined) ?? undefined);
-
-            // Extract image from response
-            const imageOutput = response.output?.find((item) => item.type === 'image_generation_call') as
-                | { type: 'image_generation_call'; result?: string }
-                | undefined;
-
-            if (imageOutput?.result) {
-                const filename = `${timestamp}-${i}.${fileExtension}`;
-                const b64_json = imageOutput.result;
-
-                if (effectiveStorageMode === 'fs') {
-                    const buffer = Buffer.from(b64_json, 'base64');
-                    const filepath = path.join(outputDir, filename);
-                    await fs.writeFile(filepath, buffer);
-                }
-
-                savedImagesData.push({
-                    filename,
-                    b64_json,
-                    output_format: fileExtension,
-                    ...(effectiveStorageMode === 'fs' ? { path: `/api/image/${filename}` } : {})
-                });
-            }
-        }
+        const savedImagesData = settledBatch.results.map((result) => result.savedImage);
+        const failureMessage = formatFailureMessage(settledBatch.failures, maxImages);
 
         if (savedImagesData.length === 0) {
-            return NextResponse.json({ error: 'Failed to generate any images.' }, { status: 500 });
+            return NextResponse.json(
+                {
+                    error: failureMessage || 'Failed to generate any images.',
+                    ...(settledBatch.failures.length > 0 ? { failures: settledBatch.failures } : {})
+                },
+                { status: 500 }
+            );
         }
 
-        return NextResponse.json({ images: savedImagesData, usage: aggregatedUsage });
+        return NextResponse.json({
+            images: savedImagesData,
+            usage: settledBatch.usage,
+            ...(failureMessage ? { error: failureMessage, failures: settledBatch.failures } : {})
+        });
     } catch (error: unknown) {
         console.error('Error in /api/images:', error);
 
