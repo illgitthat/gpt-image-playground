@@ -1,8 +1,6 @@
 # <img src="./public/favicon.svg" alt="Project Logo" width="30" height="30" style="vertical-align: middle; margin-right: 8px;"> GPT Image/Video Playground
 
-A web-based playground to interact with OpenAI's GPT image models (`gpt-image-2`, `gpt-image-1.5`, `gpt-image-1`, and `gpt-image-1-mini`) for generating and editing images, plus **Sora 2** for AI video generation. Supports both the standard OpenAI API and Azure OpenAI deployments.
-
-> **Note:** The playground now defaults to `gpt-image-2`.
+A web-based playground to interact with OpenAI's `gpt-image-2` model for generating and editing images, plus **Sora 2** for AI video generation. Supports both the standard OpenAI API and Azure OpenAI deployments.
 
 <p align="center">
   <img src="./readme-images/interface.jpg" alt="Interface" width="800"/>

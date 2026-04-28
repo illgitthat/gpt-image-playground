@@ -3,7 +3,7 @@
 import { Button } from '@/components/ui/button';
 import { ImageLightbox, type LightboxMedia } from '@/components/image-lightbox';
 import { cn } from '@/lib/utils';
-import { Loader2, Send, Grid, Download, Maximize2, ImagePlus } from 'lucide-react';
+import { Loader2, Send, Grid, Download, Maximize2, ImagePlus, Clock } from 'lucide-react';
 import Image from 'next/image';
 import * as React from 'react';
 
@@ -22,7 +22,105 @@ type ImageOutputProps = {
     baseImagePreviewUrl: string | null;
     streamingPreviewImages?: Map<number, string>;
     onSendToVideo?: (filename: string) => void;
+    loadingQuality?: 'low' | 'medium' | 'high' | 'auto';
+    loadingCount?: number;
 };
+
+function formatElapsed(seconds: number): string {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return m > 0 ? `${m}:${s.toString().padStart(2, '0')}` : `${s}s`;
+}
+
+const GENERATION_TIPS = [
+    'Higher quality settings produce more detailed results but take longer',
+    'Try "Enhance prompt" to get richer, more descriptive prompts',
+    'Reference images help guide style and composition',
+    'Generate multiple images to compare variations',
+    'Transparent backgrounds work best with simple subjects',
+    'Use landscape or portrait sizes for different compositions',
+    'Detailed prompts with specific adjectives tend to produce better results',
+];
+
+const PHASE_MESSAGES: [number, string][] = [
+    [0, 'Interpreting prompt…'],
+    [5, 'Setting up generation…'],
+    [15, 'Composing image…'],
+    [40, 'Rendering details…'],
+    [80, 'Refining output…'],
+    [150, 'Finalizing — hang tight…'],
+    [240, 'Still working — complex images take time…'],
+];
+
+function getPhaseMessage(elapsed: number): string {
+    let msg = PHASE_MESSAGES[0][1];
+    for (const [threshold, message] of PHASE_MESSAGES) {
+        if (elapsed >= threshold) msg = message;
+    }
+    return msg;
+}
+
+function getEstimatedDuration(quality?: string, count?: number): number {
+    let base = 60;
+    if (quality === 'high') base = 120;
+    else if (quality === 'low') base = 30;
+    else if (quality === 'medium') base = 60;
+    const multiplier = count && count > 1 ? 1 + 0.5 * (count - 1) : 1;
+    return base * multiplier;
+}
+
+function getEstimatedProgress(elapsed: number, estimatedDuration: number): number {
+    // Asymptotic approach: fast initially, slows near end. Never reaches 100%.
+    const ratio = elapsed / estimatedDuration;
+    return Math.min(1 - Math.exp(-2 * ratio), 0.92);
+}
+
+function GenerationLoader({
+    elapsedSeconds,
+    quality,
+    count,
+}: {
+    elapsedSeconds: number;
+    quality?: string;
+    count?: number;
+}) {
+    const phaseMessage = getPhaseMessage(elapsedSeconds);
+    const tipIndex = Math.floor(elapsedSeconds / 10) % GENERATION_TIPS.length;
+    const estimatedDuration = getEstimatedDuration(quality, count);
+    const progress = getEstimatedProgress(elapsedSeconds, estimatedDuration);
+
+    return (
+        <div className='flex flex-col items-center justify-center gap-4'>
+            {/* Animated ring with elapsed time */}
+            <div className='relative flex h-20 w-20 items-center justify-center'>
+                <div className='generation-ring absolute inset-0 rounded-full' />
+                <div className='generation-breathe absolute inset-2.5 rounded-full bg-primary/15' />
+                <span className='relative font-mono text-xs tabular-nums text-foreground/80'>
+                    {formatElapsed(elapsedSeconds)}
+                </span>
+            </div>
+
+            {/* Phase message */}
+            <p className='text-sm font-medium text-foreground/90'>{phaseMessage}</p>
+
+            {/* Progress bar */}
+            <div className='h-1 w-44 overflow-hidden rounded-full bg-border'>
+                <div
+                    className='generation-progress-fill h-full rounded-full bg-primary/50 transition-[width] duration-1000 ease-out'
+                    style={{ width: `${progress * 100}%` }}
+                />
+            </div>
+
+            {/* Rotating tip */}
+            <p
+                key={tipIndex}
+                className='rise-in max-w-[260px] text-center text-[11px] leading-relaxed text-muted-foreground/60'
+            >
+                {GENERATION_TIPS[tipIndex]}
+            </p>
+        </div>
+    );
+}
 
 const getGridColsClass = (count: number): string => {
     if (count <= 1) return 'grid-cols-1';
@@ -43,7 +141,9 @@ export function ImageOutput({
     onSendToEdit,
     baseImagePreviewUrl,
     streamingPreviewImages,
-    onSendToVideo
+    onSendToVideo,
+    loadingQuality,
+    loadingCount
 }: ImageOutputProps) {
     const handleSendClick = () => {
         // Send to edit only works when a single image is selected
@@ -86,6 +186,17 @@ export function ImageOutput({
 
     const [lightboxOpen, setLightboxOpen] = React.useState(false);
 
+    // Elapsed time counter during loading
+    const [elapsedSeconds, setElapsedSeconds] = React.useState(0);
+    React.useEffect(() => {
+        if (!isLoading) {
+            setElapsedSeconds(0);
+            return;
+        }
+        const interval = setInterval(() => setElapsedSeconds((s) => s + 1), 1000);
+        return () => clearInterval(interval);
+    }, [isLoading]);
+
     const lightboxMedia: LightboxMedia[] = React.useMemo(() => {
         if (!imageBatch) return [];
         return imageBatch.map((img) => ({
@@ -98,7 +209,12 @@ export function ImageOutput({
     return (
         <div className='relative flex h-full min-h-[300px] w-full flex-col items-center justify-between gap-4 overflow-hidden rounded-md border border-border bg-card p-5 shadow-[0_1px_0_0_var(--border)]'>
             <div className='absolute right-5 top-4 font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground'>
-                {isLoading ? 'generating…' : imageBatch && imageBatch.length > 0 ? `${typeof viewMode === 'number' ? viewMode + 1 : '·'} / ${imageBatch.length}` : ''}
+                {isLoading ? (
+                    <span className='flex items-center gap-1.5'>
+                        <Clock className='h-3 w-3' />
+                        {formatElapsed(elapsedSeconds)}
+                    </span>
+                ) : imageBatch && imageBatch.length > 0 ? `${typeof viewMode === 'number' ? viewMode + 1 : '·'} / ${imageBatch.length}` : ''}
             </div>
             <div className='relative mt-8 flex h-full w-full flex-grow items-center justify-center overflow-hidden'>
                 {isLoading ? (
@@ -139,16 +255,12 @@ export function ImageOutput({
                                 className='blur-md filter'
                                 unoptimized
                             />
-                            <div className='absolute inset-0 flex flex-col items-center justify-center bg-background/50 text-foreground/90'>
-                                <Loader2 className='mb-2 h-8 w-8 animate-spin' />
-                                <p>Generating image...</p>
+                            <div className='absolute inset-0 flex items-center justify-center bg-background/50'>
+                                <GenerationLoader elapsedSeconds={elapsedSeconds} quality={loadingQuality} count={loadingCount} />
                             </div>
                         </div>
                     ) : (
-                        <div className='flex flex-col items-center justify-center text-muted-foreground'>
-                            <Loader2 className='mb-2 h-8 w-8 animate-spin' />
-                            <p>Generating image...</p>
-                        </div>
+                        <GenerationLoader elapsedSeconds={elapsedSeconds} quality={loadingQuality} count={loadingCount} />
                     )
                 ) : imageBatch && imageBatch.length > 0 ? (
                     viewMode === 'grid' ? (

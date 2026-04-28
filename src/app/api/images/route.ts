@@ -297,7 +297,10 @@ async function generateSingleImage({
         | undefined;
 
     if (!imageOutput?.result) {
-        throw new Error(`No image was generated for index ${index}.`);
+        // Try to extract a text explanation from the model response
+        const textOutput = response.output_text;
+        const detail = textOutput ? `: ${textOutput}` : '.';
+        throw new Error(`No image was generated${detail}`);
     }
 
     const filename = `${timestamp}-${index}.${fileExtension}`;
@@ -345,6 +348,7 @@ async function generateSingleImageWithPartialStreaming(
     let finalImageB64: string | undefined;
     let partialImageCount = 0;
     let usage: ApiUsage | undefined;
+    let textContent = '';
 
     for await (const event of response as AsyncIterable<{ type: string; [key: string]: unknown }>) {
         if (event.type === 'response.image_generation_call.partial_image') {
@@ -359,18 +363,27 @@ async function generateSingleImageWithPartialStreaming(
                 partialImageCount++;
             }
         } else if (event.type === 'response.output_item.done') {
-            const item = event.item as { type?: string; result?: string } | undefined;
+            const item = event.item as { type?: string; result?: string; text?: string } | undefined;
             if (item?.type === 'image_generation_call' && item.result) {
                 finalImageB64 = item.result;
+            } else if (item?.type === 'message' || item?.text) {
+                textContent += item.text ?? '';
             }
+        } else if (event.type === 'response.output_text.delta') {
+            const delta = event.delta as string | undefined;
+            if (delta) textContent += delta;
         } else if (event.type === 'response.completed' || event.type === 'response.done') {
-            const completedResponse = event.response as { usage?: ApiUsage } | undefined;
+            const completedResponse = event.response as { usage?: ApiUsage; output_text?: string } | undefined;
             usage = completedResponse?.usage;
+            if (!textContent && completedResponse?.output_text) {
+                textContent = completedResponse.output_text;
+            }
         }
     }
 
     if (!finalImageB64) {
-        throw new Error(`No image was generated for index ${index}.`);
+        const detail = textContent ? `: ${textContent}` : '.';
+        throw new Error(`No image was generated${detail}`);
     }
 
     const filename = `${timestamp}-${index}.${fileExtension}`;

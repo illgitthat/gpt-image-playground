@@ -656,7 +656,7 @@ export default function HomePage() {
                                 })),
                                 storageModeUsed: 'fs',
                                 durationMs,
-                                quality: 'auto',
+                                quality: 'low',
                                 background: 'auto',
                                 moderation: 'low',
                                 prompt: formData.prompt,
@@ -1638,6 +1638,8 @@ export default function HomePage() {
                             onSendToEdit={handleUseAsReference}
                             baseImagePreviewUrl={genReferenceImagePreviewUrls[0] || null}
                             streamingPreviewImages={streamingPreviewImages}
+                            loadingQuality={genQuality}
+                            loadingCount={genN[0]}
                             // onSendToVideo={handleSendToVideo} // Disabled - video feature temporarily hidden
                         />
                         {/* )} */}

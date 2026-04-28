@@ -5,11 +5,10 @@ import { Card, CardContent, CardFooter } from '@/components/ui/card';
 import { ImageLightbox, type LightboxMedia } from '@/components/image-lightbox';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
 import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { GPT_IMAGE_MODELS, type GptImageModel } from '@/lib/cost-utils';
+import { type GptImageModel } from '@/lib/cost-utils';
 import { compressImagesForUpload } from '@/lib/image-compress';
 import {
     Square,
@@ -25,9 +24,6 @@ import {
     BrickWall,
     Lock,
     LockOpen,
-    ChevronDown,
-    ChevronRight,
-    Settings2,
     Wand2,
     Upload,
     X,
@@ -150,7 +146,6 @@ export function GenerationForm({
 }: GenerationFormProps) {
     const showCompression = outputFormat === 'jpeg' || outputFormat === 'webp';
     const locksBackgroundToAuto = model === 'gpt-image-2';
-    const [isAdvancedOpen, setIsAdvancedOpen] = React.useState(false);
     const [imageAddError, setImageAddError] = React.useState<string | null>(null);
     const [isPastingImage, setIsPastingImage] = React.useState(false);
     const [isDraggingOver, setIsDraggingOver] = React.useState(false);
@@ -540,126 +535,78 @@ export function GenerationForm({
                         </RadioGroup>
                     </div>
 
-                    <div className='pt-2'>
-                        <Button
-                            type='button'
-                            variant='ghost'
-                            onClick={() => setIsAdvancedOpen(!isAdvancedOpen)}
-                            className='flex w-full items-center justify-between rounded-md border border-border bg-muted/30 px-4 py-2 text-sm font-medium text-foreground hover:bg-muted/60'>
-                            <div className='flex items-center gap-2'>
-                                <Settings2 className='h-4 w-4' />
-                                Advanced Settings
-                                <span className='hidden rounded-full border border-border bg-muted/30 px-2 py-0.5 text-[11px] font-normal text-muted-foreground sm:inline-flex'>
-                                    {model}
-                                </span>
-                            </div>
-                            {isAdvancedOpen ? (
-                                <ChevronDown className='h-4 w-4' />
-                            ) : (
-                                <ChevronRight className='h-4 w-4' />
-                            )}
-                        </Button>
+                    <div className='space-y-3'>
+                        <div>
+                            <Label className='block text-foreground'>Quality</Label>
+                            <span className='text-xs text-muted-foreground'>Higher quality takes longer to generate</span>
+                        </div>
+                        <RadioGroup
+                            value={quality}
+                            onValueChange={(value) => setQuality(value as GenerationFormData['quality'])}
+                            disabled={isLoading}
+                            className='flex flex-wrap gap-x-5 gap-y-3'>
+                            <RadioItemWithIcon value='auto' id='quality-auto' label='Auto' Icon={Sparkles} />
+                            <RadioItemWithIcon value='low' id='quality-low' label='Low' Icon={Tally1} />
+                            <RadioItemWithIcon
+                                value='medium'
+                                id='quality-medium'
+                                label='Medium'
+                                Icon={Tally2}
+                            />
+                            <RadioItemWithIcon value='high' id='quality-high' label='High' Icon={Tally3} />
+                        </RadioGroup>
                     </div>
 
-                    {isAdvancedOpen && (
-                        <div className='animate-in fade-in slide-in-from-top-2 space-y-5 rounded-md border border-border bg-background/20 p-4 duration-200'>
-                            <div className='space-y-2'>
-                                <div className='flex items-center justify-between gap-3'>
-                                    <Label htmlFor='model-select' className='text-foreground'>
-                                        Model
-                                    </Label>
-                                </div>
-                                <Select
-                                    value={model}
-                                    onValueChange={(value) => setModel(value as GenerationFormData['model'])}
-                                    disabled={isLoading}>
-                                    <SelectTrigger
-                                        id='model-select'
-                                        className='w-full rounded-md border border-border bg-background text-foreground focus:border-ring focus:ring-ring'>
-                                        <SelectValue placeholder='Select model' />
-                                    </SelectTrigger>
-                                    <SelectContent className='border-border bg-background text-foreground'>
-                                        {GPT_IMAGE_MODELS.map((modelName) => (
-                                            <SelectItem key={modelName} value={modelName} className='focus:bg-muted/60'>
-                                                {modelName}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
+                    {!locksBackgroundToAuto && (
+                        <div className='space-y-3'>
+                            <Label className='block text-foreground'>Background</Label>
+                            <RadioGroup
+                                value={background}
+                                onValueChange={(value) => setBackground(value as GenerationFormData['background'])}
+                                disabled={isLoading}
+                                className='flex flex-wrap gap-x-5 gap-y-3'>
+                                <RadioItemWithIcon value='auto' id='bg-auto' label='Auto' Icon={Sparkles} />
+                                <RadioItemWithIcon value='opaque' id='bg-opaque' label='Opaque' Icon={BrickWall} />
+                                <RadioItemWithIcon
+                                    value='transparent'
+                                    id='bg-transparent'
+                                    label='Transparent'
+                                    Icon={Eraser}
+                                />
+                            </RadioGroup>
+                        </div>
+                    )}
 
-                            <div className='space-y-3'>
-                                <Label className='block text-foreground'>Quality</Label>
-                                <RadioGroup
-                                    value={quality}
-                                    onValueChange={(value) => setQuality(value as GenerationFormData['quality'])}
-                                    disabled={isLoading}
-                                    className='flex flex-wrap gap-x-5 gap-y-3'>
-                                    <RadioItemWithIcon value='auto' id='quality-auto' label='Auto' Icon={Sparkles} />
-                                    <RadioItemWithIcon value='low' id='quality-low' label='Low' Icon={Tally1} />
-                                    <RadioItemWithIcon
-                                        value='medium'
-                                        id='quality-medium'
-                                        label='Medium'
-                                        Icon={Tally2}
-                                    />
-                                    <RadioItemWithIcon value='high' id='quality-high' label='High' Icon={Tally3} />
-                                </RadioGroup>
-                            </div>
+                    <div className='space-y-3'>
+                        <Label className='block text-foreground'>Output Format</Label>
+                        <RadioGroup
+                            value={outputFormat}
+                            onValueChange={(value) =>
+                                setOutputFormat(value as GenerationFormData['output_format'])
+                            }
+                            disabled={isLoading}
+                            className='flex flex-wrap gap-x-5 gap-y-3'>
+                            <RadioItemWithIcon value='png' id='format-png' label='PNG' Icon={FileImage} />
+                            <RadioItemWithIcon value='jpeg' id='format-jpeg' label='JPEG' Icon={FileImage} />
+                            <RadioItemWithIcon value='webp' id='format-webp' label='WebP' Icon={FileImage} />
+                        </RadioGroup>
+                    </div>
 
-                            {!locksBackgroundToAuto && (
-                                <div className='space-y-3'>
-                                    <Label className='block text-foreground'>Background</Label>
-                                    <RadioGroup
-                                        value={background}
-                                        onValueChange={(value) => setBackground(value as GenerationFormData['background'])}
-                                        disabled={isLoading}
-                                        className='flex flex-wrap gap-x-5 gap-y-3'>
-                                        <RadioItemWithIcon value='auto' id='bg-auto' label='Auto' Icon={Sparkles} />
-                                        <RadioItemWithIcon value='opaque' id='bg-opaque' label='Opaque' Icon={BrickWall} />
-                                        <RadioItemWithIcon
-                                            value='transparent'
-                                            id='bg-transparent'
-                                            label='Transparent'
-                                            Icon={Eraser}
-                                        />
-                                    </RadioGroup>
-                                </div>
-                            )}
-
-                            <div className='space-y-3'>
-                                <Label className='block text-foreground'>Output Format</Label>
-                                <RadioGroup
-                                    value={outputFormat}
-                                    onValueChange={(value) =>
-                                        setOutputFormat(value as GenerationFormData['output_format'])
-                                    }
-                                    disabled={isLoading}
-                                    className='flex flex-wrap gap-x-5 gap-y-3'>
-                                    <RadioItemWithIcon value='png' id='format-png' label='PNG' Icon={FileImage} />
-                                    <RadioItemWithIcon value='jpeg' id='format-jpeg' label='JPEG' Icon={FileImage} />
-                                    <RadioItemWithIcon value='webp' id='format-webp' label='WebP' Icon={FileImage} />
-                                </RadioGroup>
-                            </div>
-
-                            {showCompression && (
-                                <div className='space-y-2 pt-2 transition-opacity duration-300'>
-                                    <Label htmlFor='compression-slider' className='text-foreground'>
-                                        Compression: {compression[0]}%
-                                    </Label>
-                                    <Slider
-                                        id='compression-slider'
-                                        min={0}
-                                        max={100}
-                                        step={1}
-                                        value={compression}
-                                        onValueChange={setCompression}
-                                        disabled={isLoading}
-                                        className='mt-3 [&>button]:border-background [&>button]:bg-primary [&>button]:ring-offset-black [&>span:first-child]:h-1 [&>span:first-child>span]:bg-primary'
-                                    />
-                                </div>
-                            )}
-
+                    {showCompression && (
+                        <div className='space-y-2 pt-2 transition-opacity duration-300'>
+                            <Label htmlFor='compression-slider' className='text-foreground'>
+                                Compression: {compression[0]}%
+                            </Label>
+                            <Slider
+                                id='compression-slider'
+                                min={0}
+                                max={100}
+                                step={1}
+                                value={compression}
+                                onValueChange={setCompression}
+                                disabled={isLoading}
+                                className='mt-3 [&>button]:border-background [&>button]:bg-primary [&>button]:ring-offset-black [&>span:first-child]:h-1 [&>span:first-child>span]:bg-primary'
+                            />
                         </div>
                     )}
                 </CardContent>
