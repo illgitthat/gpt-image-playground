@@ -210,8 +210,39 @@ type SettledGenerationBatch = {
     usage?: ApiUsage;
 };
 
+const IMAGE_GENERATION_INSTRUCTIONS = `You are an image generation orchestrator. You must satisfy every allowed request by calling the image_generation tool and producing an image. Do not answer with text, critique, recommendations, questions, markdown, refusals, or explanations instead of an image. If the user asks for feedback, improvements, UX changes, redesigns, or edits to a reference image, interpret that as a request to generate the final improved visual result. When reference images are provided, use them as source material or visual references according to the user's prompt and create the requested final image.`;
+
+const IMAGE_GENERATION_RETRY_INSTRUCTIONS = `${IMAGE_GENERATION_INSTRUCTIONS} The previous attempt returned text instead of an image. For this attempt, call the image_generation tool and return the image result.`;
+
+const IMAGE_GENERATION_TOOL_CHOICE: OpenAI.Responses.ToolChoiceAllowed = {
+    type: 'allowed_tools',
+    mode: 'required',
+    tools: [{ type: 'image_generation' }]
+};
+
 function toRequestOptions(signal?: AbortSignal): { signal: AbortSignal } | undefined {
     return signal ? { signal } : undefined;
+}
+
+function createImageGenerationResponse({
+    apiClient,
+    inputContent,
+    imageGenTool,
+    signal,
+    retry
+}: Pick<GenerateImageOptions, 'apiClient' | 'inputContent' | 'imageGenTool' | 'signal'> & {
+    retry?: boolean;
+}) {
+    return apiClient.responses.create(
+        {
+            model: 'gpt-5.3-chat',
+            instructions: retry ? IMAGE_GENERATION_RETRY_INSTRUCTIONS : IMAGE_GENERATION_INSTRUCTIONS,
+            input: inputContent,
+            tools: [imageGenTool],
+            tool_choice: IMAGE_GENERATION_TOOL_CHOICE
+        },
+        toRequestOptions(signal)
+    );
 }
 
 function getErrorMessage(error: unknown): string {
@@ -283,21 +314,21 @@ async function generateSingleImage({
     effectiveStorageMode,
     signal
 }: GenerateImageOptions): Promise<GeneratedImageResult> {
-    const response = await apiClient.responses.create(
-        {
-            model: 'gpt-5.3-chat',
-            input: inputContent,
-            tools: [imageGenTool]
-        },
-        toRequestOptions(signal)
-    );
+    let response = await createImageGenerationResponse({ apiClient, inputContent, imageGenTool, signal });
 
-    const imageOutput = response.output?.find((item) => item.type === 'image_generation_call') as
+    let imageOutput = response.output?.find((item) => item.type === 'image_generation_call') as
         | { type: 'image_generation_call'; result?: string }
         | undefined;
 
+    if (!imageOutput?.result && !signal?.aborted) {
+        response = await createImageGenerationResponse({ apiClient, inputContent, imageGenTool, signal, retry: true });
+        imageOutput = response.output?.find((item) => item.type === 'image_generation_call') as
+            | { type: 'image_generation_call'; result?: string }
+            | undefined;
+    }
+
     if (!imageOutput?.result) {
-        // Try to extract a text explanation from the model response
+        // Try to extract a text explanation from the model responses
         const textOutput = response.output_text;
         const detail = textOutput ? `: ${textOutput}` : '.';
         throw new Error(`No image was generated${detail}`);
@@ -338,8 +369,10 @@ async function generateSingleImageWithPartialStreaming(
     const response = await apiClient.responses.create(
         {
             model: 'gpt-5.3-chat',
+            instructions: IMAGE_GENERATION_INSTRUCTIONS,
             input: inputContent,
             tools: [imageGenTool],
+            tool_choice: IMAGE_GENERATION_TOOL_CHOICE,
             stream: true
         },
         toRequestOptions(signal)
@@ -382,6 +415,24 @@ async function generateSingleImageWithPartialStreaming(
     }
 
     if (!finalImageB64) {
+        if (!signal?.aborted) {
+            const retryResult = await generateSingleImage({
+                index,
+                apiClient,
+                inputContent,
+                imageGenTool,
+                timestamp,
+                fileExtension,
+                effectiveStorageMode,
+                signal
+            });
+
+            return {
+                ...retryResult,
+                usage: mergeUsage(usage, retryResult.usage)
+            };
+        }
+
         const detail = textContent ? `: ${textContent}` : '.';
         throw new Error(`No image was generated${detail}`);
     }
