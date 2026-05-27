@@ -228,7 +228,7 @@ export function VideoForm({
                                         </Button>
                                     </TooltipTrigger>
                                     <TooltipContent className='bg-background text-foreground'>
-                                        Refine the video prompt with GPT-5.3 Chat.
+                                        Refine the video prompt with GPT's latest chat model.
                                     </TooltipContent>
                                 </Tooltip>
                                 <Tooltip>

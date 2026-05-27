@@ -86,6 +86,7 @@ const config = {
 };
 
 const useCustomEndpoint = Boolean(process.env.AZURE_OPENAI_ENDPOINT);
+const responseModel = process.env.PROMPT_ENHANCE_MODEL || 'gpt-chat-latest';
 
 const outputDir = path.resolve(process.cwd(), 'generated-images');
 
@@ -120,7 +121,7 @@ function createApiClient(imageDeployment?: string) {
         : undefined;
 
     return new OpenAI({
-        apiKey: config.apiKey,
+        apiKey: useCustomEndpoint ? 'unused' : config.apiKey,
         baseURL: config.baseURL,
         defaultHeaders
     });
@@ -235,7 +236,7 @@ function createImageGenerationResponse({
 }) {
     return apiClient.responses.create(
         {
-            model: 'gpt-5.3-chat',
+            model: responseModel,
             instructions: retry ? IMAGE_GENERATION_RETRY_INSTRUCTIONS : IMAGE_GENERATION_INSTRUCTIONS,
             input: inputContent,
             tools: [imageGenTool],
@@ -368,7 +369,7 @@ async function generateSingleImageWithPartialStreaming(
 
     const response = await apiClient.responses.create(
         {
-            model: 'gpt-5.3-chat',
+            model: responseModel,
             instructions: IMAGE_GENERATION_INSTRUCTIONS,
             input: inputContent,
             tools: [imageGenTool],

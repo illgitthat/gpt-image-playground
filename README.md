@@ -11,7 +11,7 @@ A focused web playground for generating images with GPT Image models through the
 - **GPT Image generation:** Generate up to 5 images per request with `gpt-image-2`, `gpt-image-1.5`, `gpt-image-1`, or `gpt-image-1-mini`.
 - **Reference-image workflow:** Drop, paste, upload, reuse, or send previous outputs back into the generator as visual references.
 - **Streaming progress:** Image requests use an SSE path with keep-alives and optional partial-image previews so long generations do not leave the UI idle.
-- **Prompt tools:** Use GPT-5.3 Chat to enhance prompts or generate a "Surprise me" idea, with optional reference-image context.
+- **Prompt tools:** Use `gpt-chat-latest` to enhance prompts or generate a "Surprise me" idea, with optional reference-image context.
 - **Output controls:** Choose count, size (`auto`, square, landscape, portrait), quality, output format (`png`, `jpeg`, `webp`), and compression for JPEG/WebP.
 - **History and reuse:** Browse generated batches, open images in a lightbox, download selected images, reuse prompts, reuse prompts with references, and delete entries.
 - **Cost estimates:** Store token usage and estimated USD costs per generation in local history.
@@ -73,10 +73,10 @@ If `AZURE_OPENAI_DEPLOYMENT_NAME` is set to a concrete deployment alias that is 
 ### Prompt enhancement
 
 ```dotenv
-PROMPT_ENHANCE_MODEL=gpt-5.3-chat
+PROMPT_ENHANCE_MODEL=gpt-chat-latest
 
 # Optional Azure deployment override for prompt enhancement.
-# AZURE_OPENAI_PROMPT_ENHANCE_DEPLOYMENT_NAME=gpt-5.3-chat
+# AZURE_OPENAI_PROMPT_ENHANCE_DEPLOYMENT_NAME=gpt-chat-latest
 ```
 
 Prompt enhancement and "Surprise me" use the Responses API and include up to 5 reference images when available.

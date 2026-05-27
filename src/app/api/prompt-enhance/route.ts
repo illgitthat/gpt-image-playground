@@ -9,7 +9,7 @@ const config = {
     enhanceDeployment: process.env.AZURE_OPENAI_PROMPT_ENHANCE_DEPLOYMENT_NAME
 };
 
-const promptEnhanceModel = process.env.PROMPT_ENHANCE_MODEL || 'gpt-5.3-chat';
+const promptEnhanceModel = process.env.PROMPT_ENHANCE_MODEL || 'gpt-chat-latest';
 const useCustomEndpoint = Boolean(process.env.AZURE_OPENAI_ENDPOINT);
 
 // Fall back: AZURE_OPENAI_PROMPT_ENHANCE_DEPLOYMENT_NAME -> PROMPT_ENHANCE_MODEL
@@ -85,7 +85,7 @@ export async function POST(request: NextRequest) {
         });
 
         const apiClient = new OpenAI({
-            apiKey: config.apiKey,
+            apiKey: useCustomEndpoint ? 'unused' : config.apiKey,
             baseURL: config.baseURL,
             defaultHeaders: useCustomEndpoint ? { 'api-key': config.apiKey! } : undefined
         });

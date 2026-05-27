@@ -351,7 +351,7 @@ export function GenerationForm({
                                         </Button>
                                     </TooltipTrigger>
                                     <TooltipContent className='bg-background text-foreground'>
-                                        Generate a fresh, unexpected image idea with GPT-5.3 Chat.
+                                        Generate a fresh, unexpected image idea with GPT's latest chat model.
                                     </TooltipContent>
                                 </Tooltip>
                                 <Tooltip>
@@ -372,7 +372,7 @@ export function GenerationForm({
                                         </Button>
                                     </TooltipTrigger>
                                     <TooltipContent className='bg-background text-foreground'>
-                                        Refine the prompt with GPT-5.3 Chat.
+                                        Refine the prompt with GPT's latest chat model.
                                     </TooltipContent>
                                 </Tooltip>
                             </div>
