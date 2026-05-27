@@ -139,7 +139,6 @@ If a reverse proxy or CDN fronts the app, use long upstream timeouts and disable
 ## Notes
 
 - The visible app is currently focused on image generation and reference-image editing workflows. Video/Sora code exists in the repository but the video UI is disabled.
-- Keep API keys out of source control. `.env.local` is ignored by Git.
 - Generated filesystem outputs are written to `generated-images/`; avoid committing generated user assets.
 
 ## License
