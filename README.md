@@ -1,221 +1,126 @@
-# <img src="./public/favicon.svg" alt="Project Logo" width="30" height="30" style="vertical-align: middle; margin-right: 8px;"> GPT Image/Video Playground
+# <img src="./public/favicon.svg" alt="Project Logo" width="30" height="30" style="vertical-align: middle; margin-right: 8px;"> GPT Image Playground
 
-A web-based playground to interact with OpenAI's `gpt-image-2` model for generating and editing images, plus **Sora 2** for AI video generation. Supports both the standard OpenAI API and Azure OpenAI deployments.
+A focused web playground for generating images with GPT Image models through the OpenAI SDK. It supports OpenAI-compatible Azure gateways, reference images, streaming previews, prompt enhancement, local history, cost estimates, and optional password protection.
 
 <p align="center">
-  <img src="./readme-images/interface.jpg" alt="Interface" width="800"/>
+  <img src="./readme-images/interface.jpg" alt="GPT Image Playground interface" width="900"/>
 </p>
 
-## 📑 Table of Contents
+## Features
 
-- [ GPT Image/Video Playground](#-gpt-imagevideo-playground)
-  - [📑 Table of Contents](#-table-of-contents)
-  - [⚡ Quick Start](#-quick-start)
-  - [✨ Features](#-features)
-  - [▲ Deploy to Vercel](#-deploy-to-vercel)
-  - [🚀 Local Deployment](#-local-deployment)
-    - [Prerequisites](#prerequisites)
-    - [1. Set Up API Key 🟢](#1-set-up-api-key-)
-    - [🟡 Optional Configuration](#-optional-configuration)
-    - [2. Install Dependencies 🟢](#2-install-dependencies-)
-    - [3. Run the Development Server 🟢](#3-run-the-development-server-)
-    - [4. Open the Playground 🟢](#4-open-the-playground-)
-  - [🏭 Production Run (systemd)](#-production-run-systemd)
-  - [🤝 Contributing](#-contributing)
-  - [📄 License](#-license)
+- **GPT Image generation:** Generate up to 5 images per request with `gpt-image-2`, `gpt-image-1.5`, `gpt-image-1`, or `gpt-image-1-mini`.
+- **Reference-image workflow:** Drop, paste, upload, reuse, or send previous outputs back into the generator as visual references.
+- **Streaming progress:** Image requests use an SSE path with keep-alives and optional partial-image previews so long generations do not leave the UI idle.
+- **Prompt tools:** Use GPT-5.3 Chat to enhance prompts or generate a "Surprise me" idea, with optional reference-image context.
+- **Output controls:** Choose count, size (`auto`, square, landscape, portrait), quality, output format (`png`, `jpeg`, `webp`), and compression for JPEG/WebP.
+- **History and reuse:** Browse generated batches, open images in a lightbox, download selected images, reuse prompts, reuse prompts with references, and delete entries.
+- **Cost estimates:** Store token usage and estimated USD costs per generation in local history.
+- **Storage options:** Save generated images to the local filesystem by default, or use browser IndexedDB for serverless deployments.
+- **Password protection:** Add `APP_PASSWORD` to require a shared password before API-backed operations.
 
-## ⚡ Quick Start
+<p align="center">
+  <img src="./readme-images/references.jpg" alt="Reference image workflow" width="900"/>
+</p>
+
+<p align="center">
+  <img src="./readme-images/history.jpg" alt="Generation history" width="900"/>
+</p>
+
+<p align="center">
+  <img src="./readme-images/prompt-reuse.jpg" alt="History prompt reuse dialog" width="900"/>
+</p>
+
+## Quick start
 
 ```bash
-# 1. Clone and enter the repo
 git clone https://github.com/illgitthat/gpt-image-playground.git
 cd gpt-image-playground
 
-# 2. Set up your environment variables
 cp .env.local.example .env.local
-# Then edit .env.local with your API key(s)
+# Edit .env.local with your API credentials.
 
-# 3. Install and run
 bun install
 bun run dev
 ```
 
-Then open [http://localhost:3000](http://localhost:3000) 🎉
+Open [http://localhost:3000](http://localhost:3000).
 
-## ✨ Features
+## Configuration
 
-- **🎨 Image Generation Mode:** Create new images from text prompts.
-- **🖌️ Image Editing Mode:** Modify existing images based on text prompts and optional masks.
-- **🎞️ Image → Video (Sora 2):** Generate a short video from a prompt, optionally guided by a reference image, using OpenAI Sora 2.
-- **⚙️ Full API Parameter Control:** Access and adjust relevant parameters supported by the OpenAI Images API directly through the UI (size, quality, output format, compression, background, number of images).
-- **🎭 Integrated Masking Tool:** Easily create or upload masks directly within the editing mode to specify areas for modification. Draw directly on the image to generate a mask.
+Create `.env.local` from `.env.local.example` and configure either OpenAI or an OpenAI-compatible Azure gateway.
 
-    <p align="center">
-      <img src="./readme-images/mask-creation.jpg" alt="Mask Creation" width="400"/>
-    </p>
-
-- **📜 Detailed History & Cost Tracking:**
-    - View a comprehensive history of all your image generations and edits.
-    - See the parameters used for each request.
-    - Get detailed API token usage and estimated cost breakdowns (`$USD`) for each operation. (hint: click the `$` amount on the image)
-    - View the full prompt used for each history item.
-    - View total historical API cost.
-    - Delete items from history
-
-<p align="center">
-  <img src="./readme-images/history.jpg" alt="History Panel" width="1000"/>
-</p>
-
-<p align="center">
-  <img src="./readme-images/cost-breakdown.jpg" alt="Cost Breakdown" width="400"/>
-</p>
-
-- **🖼️ Flexible Image Output View:** View generated image batches as a grid or select individual images for a closer look.
-- **🚀 Send to Edit:** Quickly send any generated or history image directly to the editing form.
-- **📋 Paste to Edit:** Paste images directly from your clipboard into the Edit mode's source image area.
-- **✨ Prompt Auto-Enhance:** Refine generate and edit prompts with GPT-5.3 Chat before sending them to the image API.
-- **💾 Storage:** Supports two modes via `NEXT_PUBLIC_IMAGE_STORAGE_MODE`:
-    - **Filesystem (default):** Images saved to `./generated-images` on the server.
-    - **IndexedDB:** Images saved directly in the browser's IndexedDB (ideal for serverless deployments).
-    - Generation history metadata is always saved in the browser's local storage.
-
-## ▲ Deploy to Vercel
-
-🚨 _CAUTION: If you deploy from `main` or `master` branch, your Vercel deployment will be **publicly available** to anyone who has the URL. Deploying from other branches will require users to be logged into Vercel (on your team) to access the preview build._ 🚨
-
-You can deploy your own instance of this playground to Vercel with one click:
-
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/illgitthat/gpt-image-playground&env=OPENAI_API_KEY,NEXT_PUBLIC_IMAGE_STORAGE_MODE,APP_PASSWORD&envDescription=OpenAI%20API%20Key%20is%20required.%20Set%20storage%20mode%20to%20indexeddb%20for%20Vercel%20deployments.&project-name=gpt-image-playground&repository-name=gpt-image-playground)
-
-You will be prompted to enter your `OPENAI_API_KEY` and `APP_PASSWORD` during the deployment setup. The app will automatically use `indexeddb` storage mode on Vercel.
-
-## 🚀 Local Deployment
-
-Follow these steps to get the playground running locally.
-
-### Prerequisites
-
-- [Node.js](https://nodejs.org/) (Version 20 or later required)
-- [Bun](https://bun.sh/) (Version 1.3 or later recommended)
-
-### 1. Set Up API Key 🟢
-
-You need an API key to use this application. You can configure it to use either a standard OpenAI API key or an Azure OpenAI deployment.
-
-> ⚠️ [Your OpenAI Organization needs to be verified to use GPT Image models](https://help.openai.com/en/articles/10910291-api-organization-verification)
-
-**Option 1: Standard OpenAI API Key**
-
-1.  If you don't have a `.env.local` file in the project root, create one.
-2.  Add your OpenAI API key to the `.env.local` file:
-
-    ```dotenv
-    # .env.local
-    OPENAI_API_KEY=your_openai_api_key_here
-    ```
-
-**Option 2: Azure OpenAI Service**
-
-1.  Ensure you have an Azure OpenAI resource and a model deployment (for example, `gpt-image-2`).
-2.  If you don't have a `.env.local` file in the project root, create one.
-3.  Add your Azure OpenAI credentials and deployment details to the `.env.local` file:
-
-    ```dotenv
-    # .env.local
-    AZURE_OPENAI_API_KEY=your_azure_api_key
-    AZURE_OPENAI_ENDPOINT=your_azure_endpoint # e.g., https://your-resource-name.openai.azure.com/
-    AZURE_OPENAI_DEPLOYMENT_NAME=gpt-image-2 # Or your custom image deployment name
-    AZURE_OPENAI_API_VERSION=your_api_version # e.g., 2025-04-01-preview
-    AZURE_OPENAI_SORA_MODEL=sora-2 # optional override for the Sora 2 deployment name
-    ```
-
-**How it Works:**
-
-The application will automatically detect if the Azure environment variables (`AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_DEPLOYMENT_NAME`, `AZURE_OPENAI_API_VERSION`) are set in `.env.local`. If they are, it will use the Azure OpenAI client. Otherwise, it will fall back to using the standard OpenAI client if `OPENAI_API_KEY` is set.
-
-On the Azure OpenAI-compatible gateway path used in this repo, image generation is currently routed through the Responses API image tool. In live testing against Azure, that path supports `auto`, `1024x1024`, `1536x1024`, and `1024x1536`.
-
-> **Important:** Keep your API keys secret. The `.env.local` file is included in `.gitignore` by default.
-
-### 🟡 Optional Configuration
-
-<details>
-<summary><strong>IndexedDB Mode</strong> (for serverless hosts like Vercel)</summary>
-
-For environments where the filesystem is read-only or ephemeral, images can be stored in the browser's IndexedDB:
+### Standard OpenAI
 
 ```dotenv
-NEXT_PUBLIC_IMAGE_STORAGE_MODE=indexeddb
+OPENAI_API_KEY=sk-your-openai-api-key-here
+
+# Optional: point the OpenAI SDK at a compatible endpoint.
+# OPENAI_API_BASE_URL=https://your-custom-endpoint.com/v1
 ```
 
-> **Note:** The app auto-detects Vercel and defaults to `indexeddb` mode. For local development, it defaults to `fs` (filesystem).
-
-</details>
-
-<details>
-<summary><strong>Prompt Auto-Enhance</strong></summary>
-
-Auto-polish prompts with a chat model before calling the image API:
+### Azure OpenAI-compatible gateway
 
 ```dotenv
-# Override the chat model (default: gpt-5.3-chat)
+AZURE_OPENAI_API_KEY=your-azure-api-key
+AZURE_OPENAI_ENDPOINT=https://your-gateway.com/openai/v1
+AZURE_OPENAI_DEPLOYMENT_NAME=gpt-image-2
+```
+
+The app uses the standard `openai` package, not the Azure SDK. For Azure-compatible endpoints, requests are authenticated with the `api-key` header and image generation is routed through the Responses API `image_generation` tool.
+
+If `AZURE_OPENAI_DEPLOYMENT_NAME` is set to a concrete deployment alias that is not one of the built-in model IDs, the server sends that value in the `x-ms-oai-image-generation-deployment` header. If it is set to a built-in model ID, the selected UI model is used.
+
+### Prompt enhancement
+
+```dotenv
 PROMPT_ENHANCE_MODEL=gpt-5.3-chat
 
-# For Azure, specify a chat deployment
-AZURE_OPENAI_PROMPT_ENHANCE_DEPLOYMENT_NAME=your_chat_deployment
+# Optional Azure deployment override for prompt enhancement.
+# AZURE_OPENAI_PROMPT_ENHANCE_DEPLOYMENT_NAME=gpt-5.3-chat
 ```
 
-</details>
+Prompt enhancement and "Surprise me" use the Responses API and include up to 5 reference images when available.
 
-<details>
-<summary><strong>Custom API Endpoint</strong></summary>
-
-Use an OpenAI-compatible API endpoint:
+### Storage mode
 
 ```dotenv
-OPENAI_API_BASE_URL=your_compatible_api_endpoint_here
+# Options: fs or indexeddb
+# NEXT_PUBLIC_IMAGE_STORAGE_MODE=fs
 ```
 
-</details>
+- `fs` stores generated outputs in `./generated-images` and serves them through `/api/image/[filename]`.
+- `indexeddb` stores generated outputs in the browser. This is useful on read-only or ephemeral hosts.
+- If storage mode is not set, Vercel deployments default to `indexeddb`; local development defaults to `fs`.
+- Reference images are stored locally in IndexedDB for history reuse.
 
-<details>
-<summary><strong>Password Protection</strong></summary>
+### Password protection
 
 ```dotenv
-APP_PASSWORD=your_password_here
+APP_PASSWORD=your-shared-password
 ```
 
-When set, users must enter the password to access the playground.
+When set, the UI asks users to configure the password and sends a SHA-256 hash with protected API requests.
 
-<p align="center">
-  <img src="./readme-images/password-dialog.jpg" alt="Password Dialog" width="460"/>
-</p>
-
-</details>
-
-### 2. Install Dependencies 🟢
-
-Navigate to the project directory in your terminal and install the necessary packages:
+## Development
 
 ```bash
 bun install
-```
-
-### 3. Run the Development Server 🟢
-
-Start the Next.js development server:
-
-```bash
 bun run dev
 ```
 
-### 4. Open the Playground 🟢
+Useful scripts:
 
-Open [http://localhost:3000](http://localhost:3000) in your web browser. You should now be able to use the gpt-image-2 Playground!
+| Command | Description |
+| --- | --- |
+| `bun run dev` | Start the Next.js development server with Turbopack. |
+| `bun run build` | Build the production app. |
+| `bun run start` | Start the production server after a build. |
+| `bun run lint` | Run ESLint. |
+| `bun run format` | Format source files with Prettier. |
 
-## 🏭 Production Run (systemd)
+## Production with systemd
 
-1. Install, build, and start the service:
+Build the app, install the service file, and update the unit for your host:
 
 ```bash
 bun install
@@ -227,25 +132,15 @@ sudo systemctl restart gpt-image-playground
 sudo systemctl status gpt-image-playground
 ```
 
-Before starting the service, update the unit file for your host. In most setups that means changing the service user, working directory, Bun path, and port.
+In most deployments you should adjust the service user, working directory, Bun path, hostname, and port in `deploy/gpt-image-playground.service`.
 
-2. Manage the service:
+If a reverse proxy or CDN fronts the app, use long upstream timeouts and disable proxy buffering for image-generation requests. The app streams image progress over SSE and long generations can run for several minutes.
 
-```bash
-sudo systemctl status gpt-image-playground
-sudo journalctl -u gpt-image-playground -n 100 --no-pager
-sudo systemctl restart gpt-image-playground
-sudo systemctl stop gpt-image-playground
-```
+## Notes
 
-If you are fronting the app with a reverse proxy or CDN, use long upstream timeouts (around `600s`) and disable proxy buffering. Image generations can run for a few minutes, and the partial-image streaming path uses SSE, so aggressive proxy defaults can cut requests off early.
+- The visible app is currently focused on image generation and reference-image editing workflows. Video/Sora code exists in the repository but the video UI is disabled.
+- Generated filesystem outputs are written to `generated-images/`; avoid committing generated user assets.
 
-Make sure `.env.local` (or equivalent exported environment variables) is available on the server before starting the process.
-
-## 🤝 Contributing
-
-Contributions are welcome!
-
-## 📄 License
+## License
 
 MIT
