@@ -86,7 +86,7 @@ const config = {
 };
 
 const useCustomEndpoint = Boolean(process.env.AZURE_OPENAI_ENDPOINT);
-const responseModel = process.env.PROMPT_ENHANCE_MODEL || 'gpt-chat-latest';
+const responseModel = process.env.AZURE_OPENAI_TEXT_MODEL || 'gpt-chat-latest';
 
 const outputDir = path.resolve(process.cwd(), 'generated-images');
 

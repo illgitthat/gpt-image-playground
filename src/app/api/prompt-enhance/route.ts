@@ -5,15 +5,13 @@ import { buildPromptEnhanceInput, type PromptEnhanceImagePayload } from '@/lib/p
 
 const config = {
     apiKey: process.env.AZURE_OPENAI_API_KEY || process.env.OPENAI_API_KEY,
-    baseURL: process.env.AZURE_OPENAI_ENDPOINT || process.env.OPENAI_API_BASE_URL,
-    enhanceDeployment: process.env.AZURE_OPENAI_PROMPT_ENHANCE_DEPLOYMENT_NAME
+    baseURL: process.env.AZURE_OPENAI_ENDPOINT || process.env.OPENAI_API_BASE_URL
 };
 
-const promptEnhanceModel = process.env.PROMPT_ENHANCE_MODEL || 'gpt-chat-latest';
+const promptEnhanceModel = process.env.AZURE_OPENAI_TEXT_MODEL || 'gpt-chat-latest';
 const useCustomEndpoint = Boolean(process.env.AZURE_OPENAI_ENDPOINT);
 
-// Fall back: AZURE_OPENAI_PROMPT_ENHANCE_DEPLOYMENT_NAME -> PROMPT_ENHANCE_MODEL
-const modelToUse = config.enhanceDeployment || promptEnhanceModel;
+const modelToUse = promptEnhanceModel;
 
 function sha256(data: string): string {
     return crypto.createHash('sha256').update(data).digest('hex');

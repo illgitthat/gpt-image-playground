@@ -5,13 +5,12 @@ import { buildSurpriseMeInput, type PromptEnhanceImagePayload } from '@/lib/prom
 
 const config = {
     apiKey: process.env.AZURE_OPENAI_API_KEY || process.env.OPENAI_API_KEY,
-    baseURL: process.env.AZURE_OPENAI_ENDPOINT || process.env.OPENAI_API_BASE_URL,
-    enhanceDeployment: process.env.AZURE_OPENAI_PROMPT_ENHANCE_DEPLOYMENT_NAME
+    baseURL: process.env.AZURE_OPENAI_ENDPOINT || process.env.OPENAI_API_BASE_URL
 };
 
-const promptEnhanceModel = process.env.PROMPT_ENHANCE_MODEL || 'gpt-chat-latest';
+const promptEnhanceModel = process.env.AZURE_OPENAI_TEXT_MODEL || 'gpt-chat-latest';
 const useCustomEndpoint = Boolean(process.env.AZURE_OPENAI_ENDPOINT);
-const modelToUse = config.enhanceDeployment || promptEnhanceModel;
+const modelToUse = promptEnhanceModel;
 const ALLOWED_REFERENCE_IMAGE_MIME_TYPES = new Set([
     'image/png',
     'image/jpeg',

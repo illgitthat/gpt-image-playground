@@ -30,7 +30,7 @@ Key points:
 AZURE_OPENAI_ENDPOINT=https://...y/openai/v1
 AZURE_OPENAI_API_KEY=<your-key>
 AZURE_OPENAI_DEPLOYMENT_NAME=gpt-image-2
-PROMPT_ENHANCE_MODEL=gpt-5.3-chat  # Optional, for prompt enhancement
+AZURE_OPENAI_TEXT_MODEL=gpt-chat-latest  # Optional, for prompt enhancement
 ```
 
 **Warning**: System environment variables can override `.env.local`. If you have `AZURE_OPENAI_ENDPOINT` set system-wide, it may conflict.

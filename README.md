@@ -73,10 +73,7 @@ If `AZURE_OPENAI_DEPLOYMENT_NAME` is set to a concrete deployment alias that is 
 ### Prompt enhancement
 
 ```dotenv
-PROMPT_ENHANCE_MODEL=gpt-chat-latest
-
-# Optional Azure deployment override for prompt enhancement.
-# AZURE_OPENAI_PROMPT_ENHANCE_DEPLOYMENT_NAME=gpt-chat-latest
+AZURE_OPENAI_TEXT_MODEL=gpt-chat-latest
 ```
 
 Prompt enhancement and "Surprise me" use the Responses API and include up to 5 reference images when available.
