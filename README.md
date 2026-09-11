@@ -1,186 +1,95 @@
-# <img src="./public/favicon.svg" alt="Project Logo" width="30" height="30" style="vertical-align: middle; margin-right: 8px;"> GPT Image Playground
+# GPT Image Playground
 
-A focused web playground for generating images with GPT Image models through the OpenAI SDK. It supports OpenAI-compatible Azure gateways, reference images, streaming previews, prompt enhancement, local history, cost estimates, and optional password protection.
+Generate and edit images with GPT Image 2.5 Flare and Sunburst, using reference images, prompt enhancement, and local history.
 
-<p align="center">
-  <img src="./readme-images/interface.jpg" alt="GPT Image Playground with Flare selected and a generated image" width="900"/>
-</p>
-
-## Features
-
-- **GPT Image 2.5:** Choose Flare (default, speed-focused) or Sunburst (quality-focused). Generate up to 2 images per batch.
-- **Reference-image workflow:** Drop, paste, upload, reuse, or send previous outputs back into the generator as visual references. Numbered thumbnails match `Image 1`, `Image 2`, and so on in prompts.
-- **Streaming progress:** Show elapsed time, previews, and actual completion counts without estimating a percentage or finish time. Cancel stops the pending request and keeps completed images already received; unfinished previews are not saved.
-- **Prompt tools:** Use `gpt-chat-latest` to enhance prompts or generate a "Surprise me" idea, with optional reference-image context. Later typing is never replaced by a delayed reply. Undo restores the previous prompt until you edit it again.
-- **Output controls:** Choose count, size (`auto`, square, landscape, portrait), quality, output format (`png`, `jpeg`, `webp`), and compression for JPEG/WebP.
-- **History and reuse:** Browse generated batches, open images in a lightbox, download selected images, reuse prompts, reuse prompts with references, and delete entries.
-- **Cost estimates:** Estimate image cost only when the API provides image-token usage. Text-orchestrator usage is not an image-cost estimate.
-- **Storage options:** Save generated images to the local filesystem by default, or use browser IndexedDB for serverless deployments.
-- **Password protection:** Add `APP_PASSWORD` to require a shared password before API-backed operations.
-
-<p align="center">
-  <img src="./readme-images/references.jpg" alt="Sunburst editing prompt with two numbered reference images" width="650"/>
-</p>
-
-<p align="center">
-  <img src="./readme-images/history.jpg" alt="Generation history showing Flare and Sunburst outputs" width="900"/>
-</p>
-
-<p align="center">
-  <img src="./readme-images/prompt-reuse.jpg" alt="History dialog for reusing a prompt and its references" width="600"/>
-</p>
+![The playground with Flare selected and a generated image](./readme-images/interface.jpg)
 
 ## Quick start
 
-Use Node.js 22.13 or later in the 22.x line, or Node.js 24 or later, and Bun.
+Use Node.js 24 LTS and [Bun](https://bun.sh).
 
 ```bash
 git clone https://github.com/illgitthat/gpt-image-playground.git
 cd gpt-image-playground
-
-cp .env.local.example .env.local
-# Edit .env.local with your API credentials.
-
 bun install
+cp .env.local.example .env.local
+```
+
+Add your API configuration to `.env.local` using one of the options below, then run:
+
+```bash
 bun run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+Open [localhost:3000](http://localhost:3000).
 
 ## Configuration
 
-Create `.env.local` from `.env.local.example` and configure either OpenAI or an OpenAI-compatible Azure gateway.
-
-### Standard OpenAI
+For the OpenAI API:
 
 ```dotenv
-OPENAI_API_KEY=sk-your-openai-api-key-here
-
-# Optional: point the OpenAI SDK at a compatible endpoint.
-# OPENAI_API_BASE_URL=https://your-custom-endpoint.com/v1
+OPENAI_API_KEY=your-api-key
 ```
 
-### Azure OpenAI-compatible gateway
+For an Azure-compatible gateway:
 
 ```dotenv
-AZURE_OPENAI_API_KEY=your-azure-api-key
+AZURE_OPENAI_API_KEY=your-api-key
 AZURE_OPENAI_ENDPOINT=https://your-gateway.com/openai/v1
 ```
 
-The app uses the standard `openai` package, not the Azure SDK. For Azure-compatible endpoints, requests are authenticated with the `api-key` header and image generation is routed through the Responses API `image_generation` tool.
+The gateway must support the `x-ms-oai-image-generation-deployment` header and have both image models deployed. This is a gateway integration, not a direct Azure OpenAI connection.
 
-Deploy `gpt-image-2.5-flare` and `gpt-image-2.5-sunburst` at the same endpoint. The selected model is sent in the `x-ms-oai-image-generation-deployment` header. `AZURE_OPENAI_DEPLOYMENT_NAME` is no longer used; remove it from existing configurations. There is no fallback to an older image model.
+| Optional setting | Purpose |
+| --- | --- |
+| `AZURE_OPENAI_TEXT_MODEL` | Text model for image orchestration and prompt tools. Defaults to `gpt-chat-latest`; choose a model available at your endpoint. |
+| `OPENAI_API_BASE_URL` | Custom base URL for OpenAI-compatible connections. |
+| `APP_PASSWORD` | Require a shared password. |
+| `NEXT_PUBLIC_IMAGE_STORAGE_MODE` | `fs` saves images in `generated-images/`; `indexeddb` saves them in the browser. Defaults to `fs` locally and `indexeddb` on Vercel. |
 
-This gateway integration selects the deployment through the header only; the tested gateway rejects the new IDs in the image tool's `model` field. Standard OpenAI requests instead set the image tool's `model` field. Gateway behavior is not a model capability or a requirement for all Azure deployments.
+Reference images and history are stored in the browser. Use `indexeddb` on hosts without persistent writable storage.
 
-### Deployment quotas and app limits
+## Using the playground
 
-**The 2 requests/minute quota belongs to the maintainer's personal deployment, not to GPT Image 2.5 generally.** Provider limits depend on the account and deployment.
+Choose **Flare** for faster generation or **Sunburst** for higher quality. Enter a prompt, select your output settings, and generate. You can download results or reuse them as references.
 
-This version of the app currently caps all backends at **2 images per batch** and **2 image requests per minute, per model**, including standard OpenAI connections. These app-level limits are defined in [`src/lib/image-options.ts`](./src/lib/image-options.ts); they are not discovered from the provider. Higher-quota deployments remain subject to these caps until the app configuration is changed.
+For edits, add images by dropping, pasting, or uploading them. Refer to them by number and state what should change:
 
-The server reserves each batch against a rolling one-minute window, reports a wait time, and does not retry automatically. Successful images from a partially failed batch are kept. The local guard applies to one server process; other clients and server instances share the upstream quota, and the provider remains authoritative.
+> Add the leaf from Image 2 below "HELLO" on the mug in Image 1. Preserve the mug, lettering, and pale blue background.
 
-### Resolution and quality
+![Two reference images and the edited result](./readme-images/reference-edit.jpg)
 
-The [OpenAI prompting guide](https://developers.openai.com/api/docs/guides/image-prompting) documents broader model capabilities than this app currently exposes:
+**Enhance prompt** refines your wording; **Surprise me** creates an idea. Use Undo to restore the previous prompt. History lets you reuse a prompt together with its references.
 
-| Setting | GPT Image 2.5 model capabilities | Current app controls |
-| --- | --- | --- |
-| Size | `auto` or custom dimensions, including 2K and 4K | `auto`, `1024x1024`, `1536x1024`, `1024x1536` |
-| Quality | `auto`, `low`, `medium`, `high`, `xhigh`, `max` | `auto`, `low`, `medium`, `high` |
-| Background | `auto`, `opaque`, `transparent` | All three; transparency requires PNG or WebP |
+### Current limits
 
-Documented custom dimensions must satisfy all of these constraints:
+The app allows **2 images per batch** and **2 requests per minute, per model**. These are app limits, not provider limits. They are hardcoded in [`src/lib/image-options.ts`](./src/lib/image-options.ts); there is no environment setting to change them.
 
-- Each edge is at most **3,840 pixels** and a multiple of **16**.
-- The longer-to-shorter edge ratio is at most **3:1**.
-- Total pixels are between **655,360 and 8,294,400**, inclusive.
-
-Examples include `2048x1152`, `2048x2048`, `3840x2160`, and `2160x3840`. Outputs above **3,686,400 pixels** are experimental, so `2048x2048` and 4K outputs fall into that category.
-
-Rechecked September 11, 2026: the maintainer's Responses gateway rejected both `2048x2048` and `3840x2160` with HTTP 400 for **each** 2.5 deployment, listing only the four presets exposed by the app. Earlier checks also rejected `xhigh`. These are restrictions observed on that gateway route, **not universal model or deployment limits**. The app keeps the narrower controls until higher settings can be supported and verified end to end.
-
-The app preserves returned native image dimensions rather than resizing them to the requested preset. PNG and JPEG are generated directly. WebP is encoded locally from PNG because the tested gateway rejects native WebP output; this does not mean the models lack WebP support. JPEG compression (0-100) is sent to the API; WebP compression (1-100) is applied locally.
-
-See [prompt-guide.md](./prompt-guide.md) for concise prompting and output-review guidance.
-
-### Prompt enhancement
-
-```dotenv
-AZURE_OPENAI_TEXT_MODEL=gpt-chat-latest
-```
-
-Prompt enhancement and "Surprise me" use the Responses API and include up to 5 reference images when available.
-
-### Storage mode
-
-```dotenv
-# Options: fs or indexeddb
-# NEXT_PUBLIC_IMAGE_STORAGE_MODE=fs
-```
-
-- `fs` stores generated outputs in `./generated-images` and serves them through `/api/image/[filename]`.
-- `indexeddb` stores generated outputs in the browser. This is useful on read-only or ephemeral hosts.
-- If storage mode is not set, Vercel deployments default to `indexeddb`; local development defaults to `fs`.
-- Reference images are stored locally in IndexedDB for history reuse.
-
-### Password protection
-
-```dotenv
-APP_PASSWORD=your-shared-password
-```
-
-When set, the UI asks users to configure the password and sends a SHA-256 hash with protected API requests.
+Size controls are limited to auto, square, landscape, and portrait; quality controls offer auto, low, medium, and high. The models support additional settings, but this integration does not expose them. See the [OpenAI image guide](https://developers.openai.com/api/docs/guides/image-prompting) for model capabilities and [prompt-guide.md](./prompt-guide.md) for prompting advice.
 
 ## Development
 
-```bash
-bun install
-bun run dev
-```
-
-Useful scripts:
-
-| Command | Description |
+| Command | Purpose |
 | --- | --- |
-| `bun run dev` | Start the Next.js development server with Turbopack. |
-| `bun run build` | Build the production app. |
-| `bun run start` | Start the production server after a build. |
+| `bun run dev` | Start the development server. |
+| `bun run typecheck` | Check application and test types. |
 | `bun run lint` | Run ESLint. |
-| `bun run typecheck` | Check TypeScript types. |
-| `bun test` | Run behavior tests without live API calls. |
-| `bun run format` | Format source files with Prettier. |
+| `bun test` | Run tests without paid API calls. |
+| `bun run format` | Format source files. |
 
-Dependencies use current stable releases where compatible. ESLint stays on 9.x because the React lint plugin does not support ESLint 10; TypeScript stays on 6.0.x because typescript-eslint does not support TypeScript 7.
+Pull requests run type checks, lint, tests, and a production build.
 
-Pull requests and pushes to `main` run a frozen dependency install, both type checks, lint, offline behavior tests, and a production build in GitHub Actions. No API credentials or paid model requests are used in CI.
-
-Cancellation is best-effort upstream: it does not guarantee a quota refund or prevent billing for work already started.
-
-## Production with systemd
-
-Build the app, install the service file, and update the unit for your host:
+## Deployment
 
 ```bash
-bun install
 bun run build
-sudo cp ./deploy/gpt-image-playground.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable gpt-image-playground
-sudo systemctl restart gpt-image-playground
-sudo systemctl status gpt-image-playground
+bun run start
 ```
 
-In most deployments you should adjust the service user, working directory, Bun path, hostname, and port in `deploy/gpt-image-playground.service`.
+An example [systemd service](./deploy/gpt-image-playground.service) is included. Adjust its user, working directory, and Bun path for your host.
 
-If a reverse proxy or CDN fronts the app, use long upstream timeouts and disable proxy buffering for image-generation requests. The app streams image progress over SSE and long generations can run for several minutes.
-
-## Notes
-
-- The visible app is currently focused on image generation and reference-image editing workflows. Video/Sora code exists in the repository but the video UI is disabled.
-- Generated filesystem outputs are written to `generated-images/`; avoid committing generated user assets.
+For a reverse proxy, allow long-running requests and disable response buffering so image previews can stream.
 
 ## License
 
-MIT
+[MIT](./LICENSE)
