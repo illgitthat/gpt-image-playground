@@ -10,7 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { type GptImageModel } from '@/lib/cost-utils';
 import { compressImagesForUpload } from '@/lib/image-compress';
-import { MAX_IMAGES } from '@/lib/image-options';
+import { IMAGE_REQUESTS_PER_MINUTE, MAX_IMAGES } from '@/lib/image-options';
 import {
     Square,
     RectangleHorizontal,
@@ -551,7 +551,9 @@ export function GenerationForm({
                             disabled={isLoading}
                             className='[&>button]:border-background [&>button]:bg-primary [&>span:first-child>span]:bg-primary mt-3 [&>button]:ring-offset-black [&>span:first-child]:h-1'
                         />
-                        <p className='text-muted-foreground text-xs'>Up to 2 images per minute, per model.</p>
+                        <p className='text-muted-foreground text-xs'>
+                            Up to {IMAGE_REQUESTS_PER_MINUTE} images per minute, per model.
+                        </p>
                     </div>
 
                     <div className='space-y-3'>

@@ -1,6 +1,7 @@
 import { DEFAULT_GPT_IMAGE_MODEL, isGptImageModel } from './cost-utils';
 
 export const MAX_IMAGES = 2;
+export const IMAGE_REQUESTS_PER_MINUTE = 2;
 export const MAX_REFERENCE_IMAGES = 5;
 export const IMAGE_SIZES = ['auto', '1024x1024', '1536x1024', '1024x1536'] as const;
 export const IMAGE_QUALITIES = ['auto', 'low', 'medium', 'high'] as const;

@@ -55,6 +55,27 @@ describe('image request options', () => {
 });
 
 describe('per-model quota', () => {
+    test.each([0, -1, 3, 1.5, NaN])('rejects invalid reservation count %s', (count) => {
+        expect(() => createImageQuota().reserve('gpt-image-2.5-flare', count, 0)).toThrow(RangeError);
+    });
+
+    test('a short upstream cooldown never discards recent successful request slots', () => {
+        const quota = createImageQuota();
+        quota.reserve('gpt-image-2.5-flare', 2, 0);
+        quota.defer('gpt-image-2.5-flare', 5, 1000);
+        expect(quota.reserve('gpt-image-2.5-flare', 2, 6000)).toBe(54);
+        expect(quota.reserve('gpt-image-2.5-flare', 2, 60_000)).toBe(0);
+    });
+
+    test('later short cooldowns cannot shorten an existing longer cooldown', () => {
+        const quota = createImageQuota();
+        quota.reserve('gpt-image-2.5-flare', 2, 0);
+        quota.defer('gpt-image-2.5-flare', 75, 0);
+        quota.defer('gpt-image-2.5-flare', 5, 1000);
+        expect(quota.reserve('gpt-image-2.5-flare', 2, 60_000)).toBe(15);
+        expect(quota.reserve('gpt-image-2.5-flare', 2, 75_000)).toBe(0);
+    });
+
     test('reserves whole batches, separates models, and opens at 60 seconds', () => {
         const quota = createImageQuota();
         expect(quota.reserve('gpt-image-2.5-flare', 2, 0)).toBe(0);

@@ -1,4 +1,4 @@
-import { ImageInputError, parseImageOptions } from '@/lib/image-options';
+import { IMAGE_REQUESTS_PER_MINUTE, ImageInputError, parseImageOptions } from '@/lib/image-options';
 import { createImageQuota } from '@/lib/image-quota';
 import crypto from 'crypto';
 import fs from 'fs/promises';
@@ -545,7 +545,7 @@ export async function POST(request: NextRequest) {
         if (retryAfter) {
             return NextResponse.json(
                 {
-                    error: `This model allows 2 image requests per minute. Wait ${retryAfter} seconds, or choose the other model.`,
+                    error: `This model allows ${IMAGE_REQUESTS_PER_MINUTE} image requests per minute. Wait ${retryAfter} seconds, or choose the other model.`,
                     retryAfter
                 },
                 { status: 429, headers: { 'Retry-After': String(retryAfter) } }
