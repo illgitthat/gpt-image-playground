@@ -15,8 +15,6 @@ describe('image prompt inputs', () => {
         const prompt = 'Exactly 2 labels: "aB & Co.\nKeep THIS!" in Image 2. Change only the shirt; preserve Image 1 identity.';
         const result = buildPromptEnhanceInput('generate', prompt);
         expect(result.input).toBe(prompt);
-        expect(result.instructions).toContain('gpt-image-2.5-flare');
-        expect(result.instructions).toContain('gpt-image-2.5-sunburst');
         expect(result.instructions).toContain('Keep literal text verbatim');
         expect(result.instructions).toContain('Do not impose an opaque background');
         expect(result.instructions).toContain('Do not pad to a word quota');
@@ -60,11 +58,9 @@ describe('image prompt inputs', () => {
         }]);
     });
 
-    test('prompt-only surprise uses the 2.5 guidance without reference requirements', () => {
+    test('prompt-only surprise does not require references', () => {
         const result = buildSurpriseMeInput('generate');
         expect(typeof result.input).toBe('string');
-        expect(result.instructions).toContain('gpt-image-2.5-flare');
-        expect(result.instructions).toContain('gpt-image-2.5-sunburst');
         expect(result.instructions).not.toContain('visible reference details');
     });
 

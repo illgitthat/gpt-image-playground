@@ -1,7 +1,6 @@
 import type OpenAI from 'openai';
 
-const imagePromptRules = `Target gpt-image-2.5-flare (the default, speed-oriented model) and gpt-image-2.5-sunburst (quality-oriented). The same prompting principles apply to both.
-- Return only the image prompt, without commentary, markdown fences, or quotes around the whole response. Prefer brief prose; use short labeled sections only when complex requirements benefit.
+const imagePromptRules = `- Return only the image prompt, without commentary, markdown fences, or quotes around the whole response. Prefer brief prose; use short labeled sections only when complex requirements benefit.
 - Preserve every user-specified fact, name, count, color, placement, aspect ratio, exclusion, and change/preserve constraint. Do not invent data, citations, claims, branding, or extra subjects. User specifics take precedence over general advice.
 - Keep literal text verbatim, including spelling, capitalization, punctuation, and line breaks. Quote required copy; retain its requested placement, typography, and repetition count. Add legibility and no-extra-text constraints when appropriate, without removing required or preserved text. Optional spelling cues must not replace the literal wording.
 - Identify references by their original numbers (Image 1, Image 2, etc.) and roles, and explain what is borrowed or moved and where. Never renumber images or invent unseen details from filenames.
@@ -59,7 +58,7 @@ Rules:
 - Do not invent factual details the user did not imply; stay faithful to their intent.
 - Length target: 80-120 words for detailed control.`;
 
-const surprisePromptRules = `Create ONE unexpected, concrete image concept for gpt-image-2.5-flare (default) or gpt-image-2.5-sunburst. Return only a concise image prompt, usually one paragraph, with no explanation or word-count padding.
+const surprisePromptRules = `Create ONE unexpected, concrete image concept. Return only a concise image prompt, usually one paragraph, with no explanation or word-count padding.
 - Choose a distinctive subject, intended artifact, composition, medium, and useful material/light/color details; avoid generic quality buzzwords.
 - Vary photography, illustration, product imagery, logos, interfaces, and structured visuals. Interfaces should look usable; diagrams need readable labels and coherent relationships, not invented factual claims or citations.
 - If including text, quote the exact copy and specify placement, legible typography, and repetition count; exclude unintended extra text.

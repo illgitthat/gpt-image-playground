@@ -51,14 +51,12 @@ for (const [name, route] of [['prompt-enhance', enhance], ['surprise-me', surpri
     }));
 
     describe(name, () => {
-        test('uses Responses text orchestration with 2.5 instructions and ordered references', async () => {
+        test('uses Responses text orchestration with ordered references', async () => {
             const response = await send({ referenceImages: [image, { dataUrl: image, alt: 'style sample' }] });
             expect(response.status).toBe(200);
             expect(await response.json()).toEqual({ prompt: 'Keep label "aB & Co." unchanged.' });
             expect(requests).toHaveLength(1);
             expect(requests[0].model).toBe('test-text-model');
-            expect(requests[0].instructions).toContain('gpt-image-2.5-flare');
-            expect(requests[0].instructions).toContain('gpt-image-2.5-sunburst');
             const input = requests[0].input;
             if (typeof input === 'string') throw new Error('Expected multimodal input');
             expect(input[0].content.slice(0, 4)).toEqual([
