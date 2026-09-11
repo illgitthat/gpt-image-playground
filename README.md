@@ -84,7 +84,7 @@ The [OpenAI prompting guide](https://developers.openai.com/api/docs/guides/image
 - Size: `auto`, `1024x1024`, `1536x1024`, or `1024x1536`. Custom 2K sizes are rejected. Returned pixel dimensions can differ from the requested preset; the app preserves the native output.
 - Quality: `auto`, `low`, `medium`, or `high`. Extended quality settings are not exposed because the gateway rejects them.
 - Background: `auto`, `opaque`, or `transparent`. Transparency requires PNG or WebP.
-- Format: PNG and JPEG are generated directly. WebP is encoded locally from PNG because the gateway rejects direct WebP output. JPEG compression is sent to the API; WebP compression is applied locally.
+- Format: PNG and JPEG are generated directly. WebP is encoded locally from PNG because the gateway rejects direct WebP output. JPEG compression (0-100) is sent to the API; WebP compression (1-100) is applied locally.
 
 See [prompt-guide.md](./prompt-guide.md) for concise prompting and output-review guidance.
 

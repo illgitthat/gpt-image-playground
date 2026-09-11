@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint src eslint.config.mjs next.config.ts postcss.config.mjs",
     "test": "bun test",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
     "format": "prettier --write \"src/**/*.{ts,tsx}\""
   },
   "dependencies": {

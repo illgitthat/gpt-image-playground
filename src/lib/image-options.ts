@@ -36,7 +36,7 @@ export function parseImageOptions(form: FormData) {
         throw new ImageInputError('Transparent backgrounds require PNG or WebP.');
     }
     const output_compression = form.has('output_compression')
-        ? integer(form, 'output_compression', 0, 100, 100)
+        ? integer(form, 'output_compression', output_format === 'webp' ? 1 : 0, 100, 100)
         : undefined;
     if (output_format === 'png' && output_compression !== undefined) {
         throw new ImageInputError('Output compression is only supported for JPEG or WebP.');

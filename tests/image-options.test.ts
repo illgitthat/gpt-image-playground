@@ -29,6 +29,7 @@ describe('image request options', () => {
         { background: 'transparent', output_format: 'jpeg' },
         { output_format: 'png', output_compression: '50' },
         { output_format: 'webp', output_compression: '101' },
+        { output_format: 'webp', output_compression: '0' },
         { partial_images: '4' }
     ])('rejects unsupported settings %j', (values) => {
         expect(() => parseImageOptions(form(values))).toThrow();

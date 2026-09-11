@@ -154,6 +154,10 @@ export function GenerationForm({
     const [lightboxOpen, setLightboxOpen] = React.useState(false);
     const [lightboxIndex, setLightboxIndex] = React.useState(0);
 
+    React.useEffect(() => {
+        if (outputFormat === 'webp' && compression[0] === 0) setCompression([1]);
+    }, [outputFormat, compression, setCompression]);
+
     const lightboxMedia: LightboxMedia[] = React.useMemo(
         () =>
             referenceImagePreviewUrls.map((url, i) => ({
@@ -640,7 +644,7 @@ export function GenerationForm({
                             </Label>
                             <Slider
                                 id='compression-slider'
-                                min={0}
+                                min={outputFormat === 'webp' ? 1 : 0}
                                 max={100}
                                 step={1}
                                 value={compression}

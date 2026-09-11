@@ -162,7 +162,7 @@ async function persistGeneratedImage(
     if (output_format === 'webp') {
         b64_json = (
             await sharp(Buffer.from(b64_json, 'base64'))
-                .webp({ quality: Math.max(1, outputCompression ?? 100) })
+                .webp({ quality: outputCompression ?? 100 })
                 .toBuffer()
         ).toString('base64');
     }
