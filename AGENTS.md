@@ -29,7 +29,6 @@ Key points:
 ```
 AZURE_OPENAI_ENDPOINT=https://...y/openai/v1
 AZURE_OPENAI_API_KEY=<your-key>
-AZURE_OPENAI_DEPLOYMENT_NAME=gpt-image-2
 AZURE_OPENAI_TEXT_MODEL=gpt-chat-latest  # Optional, for prompt enhancement
 ```
 
@@ -86,7 +85,7 @@ const apiClient = new OpenAI({
     baseURL: process.env.AZURE_OPENAI_ENDPOINT,
     defaultHeaders: {
         'api-key': process.env.AZURE_OPENAI_API_KEY,
-        'x-ms-oai-image-generation-deployment': 'gpt-image-1.5',
+        'x-ms-oai-image-generation-deployment': 'gpt-image-2.5-flare',
         'api_version': 'preview',
     },
 });
@@ -201,6 +200,26 @@ for await (const event of response) {
 ```
 
 **Note**: The legacy `/images/generations` endpoint is NOT available on this gateway. Streaming must use the Responses API.
+
+### GPT Image 2.5 gateway constraints
+
+- Supported deployments: `gpt-image-2.5-flare` (default) and `gpt-image-2.5-sunburst`.
+- Select the gateway deployment through `x-ms-oai-image-generation-deployment` only. Do not set the image tool's `model` field for gateway requests; its validator rejects the new model IDs.
+- `AZURE_OPENAI_DEPLOYMENT_NAME` is no longer used. Older models are not supported.
+- The app currently caps batches at 2 images and requests at 2/minute/model to match the maintainer's personal deployment. This is not a universal model quota. Do not add automatic retries that spend extra quota.
+- Only the four existing size presets and `auto`/`low`/`medium`/`high` quality are exposed. The tested gateway rejected 2K/4K sizes and `xhigh`; these are gateway observations, not universal GPT Image 2.5 limits. The model documentation supports higher settings.
+- Both models support transparency. JPEG cannot preserve alpha.
+- The gateway accepts PNG/JPEG, not WebP. Encode WebP locally from PNG with Sharp.
+- Native output dimensions can differ from the requested preset. Preserve native image data.
+- Responses usage currently describes the text orchestrator, not image-token usage. Do not price those output tokens as image tokens.
+- Follow https://developers.openai.com/api/docs/guides/image-prompting and the local `prompt-guide.md` when changing image prompts.
+
+### App image streaming
+
+- `/api/images` sends each final image once in a `completed` event, with its index and image payload.
+- `done` contains `completed_count`, usage, and any partial-failure details, not image payloads. The client assembles images in index order and verifies the count against received `completed` events.
+- On cancellation or a broken stream, keep only completed images already received.
+- New image history entries have `costDetails: null`; Responses-level usage is not a source of image pricing, even when it includes an input-modality breakdown.
 
 ## Video Generation (Sora)
 

@@ -196,29 +196,11 @@
   .nudge {
     animation: nudge 1.4s ease-in-out infinite;
   }
-  @keyframes shimmer-slide {
-    0% { transform: translateX(-100%); }
-    100% { transform: translateX(200%); }
-  }
-  .generation-progress-fill {
-    overflow: hidden;
-    position: relative;
-  }
-  .generation-progress-fill::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    width: 50%;
-    background: linear-gradient(90deg, transparent, oklch(1 0 0 / 0.15), transparent);
-    animation: shimmer-slide 1.8s ease-in-out infinite;
-  }
-
   @media (prefers-reduced-motion: reduce) {
     .pulse-dot,
     .rise-in,
     .attention-pulse,
-    .nudge,
-    .generation-progress-fill::after {
+    .nudge {
       animation: none !important;
     }
     .attention-pulse {

@@ -1,7 +1,8 @@
 'use client';
 
-import { Button } from '@/components/ui/button';
 import { ImageLightbox, type LightboxMedia } from '@/components/image-lightbox';
+import { Button } from '@/components/ui/button';
+import { downloadImage } from '@/lib/image-download';
 import { cn } from '@/lib/utils';
 import { Loader2, Send, Grid, Download, Maximize2, ImagePlus } from 'lucide-react';
 import Image from 'next/image';
@@ -18,11 +19,12 @@ type ImageOutputProps = {
     onViewChange: (view: 'grid' | number) => void;
     altText?: string;
     isLoading: boolean;
+    isPreparing?: boolean;
+    completedCount?: number;
     onSendToEdit: (filename: string) => void;
     baseImagePreviewUrl: string | null;
     streamingPreviewImages?: Map<number, string>;
     onSendToVideo?: (filename: string) => void;
-    loadingQuality?: 'low' | 'medium' | 'high' | 'auto';
     loadingCount?: number;
 };
 
@@ -32,90 +34,19 @@ function formatElapsed(seconds: number): string {
     return m > 0 ? `${m}:${s.toString().padStart(2, '0')}` : `${s}s`;
 }
 
-const GENERATION_TIPS = [
-    'Higher quality settings produce more detailed results but take longer',
-    'Try "Enhance prompt" to get richer, more descriptive prompts',
-    'Reference images help guide style and composition',
-    'Generate multiple images to compare variations',
-    'Transparent backgrounds work best with simple subjects',
-    'Use landscape or portrait sizes for different compositions',
-    'Detailed prompts with specific adjectives tend to produce better results',
-];
-
-const PHASE_MESSAGES: [number, string][] = [
-    [0, 'Interpreting prompt…'],
-    [5, 'Setting up generation…'],
-    [15, 'Composing image…'],
-    [40, 'Rendering details…'],
-    [80, 'Refining output…'],
-    [150, 'Finalizing — hang tight…'],
-    [240, 'Still working — complex images take time…'],
-];
-
-function getPhaseMessage(elapsed: number): string {
-    let msg = PHASE_MESSAGES[0][1];
-    for (const [threshold, message] of PHASE_MESSAGES) {
-        if (elapsed >= threshold) msg = message;
-    }
-    return msg;
-}
-
-function getEstimatedDuration(quality?: string, count?: number): number {
-    let base = 60;
-    if (quality === 'high') base = 120;
-    else if (quality === 'low') base = 30;
-    else if (quality === 'medium') base = 60;
-    const multiplier = count && count > 1 ? 1 + 0.5 * (count - 1) : 1;
-    return base * multiplier;
-}
-
-function getEstimatedProgress(elapsed: number, estimatedDuration: number): number {
-    // Asymptotic approach: fast initially, slows near end. Never reaches 100%.
-    const ratio = elapsed / estimatedDuration;
-    return Math.min(1 - Math.exp(-2 * ratio), 0.92);
-}
-
-function GenerationLoader({
-    elapsedSeconds,
-    quality,
-    count,
-}: {
-    elapsedSeconds: number;
-    quality?: string;
-    count?: number;
-}) {
-    const phaseMessage = getPhaseMessage(elapsedSeconds);
-    const tipIndex = Math.floor(elapsedSeconds / 10) % GENERATION_TIPS.length;
-    const estimatedDuration = getEstimatedDuration(quality, count);
-    const progress = getEstimatedProgress(elapsedSeconds, estimatedDuration);
-
+function GenerationLoader({ elapsedSeconds, status }: { elapsedSeconds: number; status: string }) {
     return (
         <div className='flex flex-col items-center justify-center gap-4'>
             {/* Elapsed time with spinner */}
             <div className='relative flex h-20 w-20 items-center justify-center'>
-                <Loader2 className='absolute h-16 w-16 animate-spin text-primary/20' />
-                <span className='relative font-mono text-xs tabular-nums text-foreground/80'>
+                <Loader2 className='text-primary/20 absolute h-16 w-16 animate-spin' />
+                <span className='text-foreground/80 relative font-mono text-xs tabular-nums'>
                     {formatElapsed(elapsedSeconds)}
                 </span>
             </div>
 
-            {/* Phase message */}
-            <p className='text-sm font-medium text-foreground/90'>{phaseMessage}</p>
-
-            {/* Progress bar */}
-            <div className='h-1 w-44 overflow-hidden rounded-full bg-border'>
-                <div
-                    className='generation-progress-fill h-full rounded-full bg-primary/50 transition-[width] duration-1000 ease-out'
-                    style={{ width: `${progress * 100}%` }}
-                />
-            </div>
-
-            {/* Rotating tip */}
-            <p
-                key={tipIndex}
-                className='rise-in max-w-[260px] text-center text-[11px] leading-relaxed text-muted-foreground/60'
-            >
-                {GENERATION_TIPS[tipIndex]}
+            <p role='status' className='text-foreground/90 text-sm font-medium'>
+                {status}
             </p>
         </div>
     );
@@ -137,13 +68,22 @@ export function ImageOutput({
     onViewChange,
     altText = 'Generated image output',
     isLoading,
+    isPreparing = false,
+    completedCount = 0,
     onSendToEdit,
     baseImagePreviewUrl,
     streamingPreviewImages,
     onSendToVideo,
-    loadingQuality,
     loadingCount
 }: ImageOutputProps) {
+    const status = isPreparing
+        ? 'Loading reference…'
+        : completedCount > 0
+          ? `${completedCount}/${loadingCount ?? 1} complete`
+          : 'Generating…';
+    const [downloadError, setDownloadError] = React.useState<{ path: string; message: string } | null>(null);
+    const [isDownloading, setIsDownloading] = React.useState(false);
+    React.useEffect(() => setDownloadError(null), [imageBatch, viewMode]);
     const handleSendClick = () => {
         // Send to edit only works when a single image is selected
         if (typeof viewMode === 'number' && imageBatch && imageBatch[viewMode]) {
@@ -158,30 +98,30 @@ export function ImageOutput({
     };
 
     const handleDownload = async () => {
-        if (typeof viewMode === 'number' && imageBatch && imageBatch[viewMode]) {
+        if (!isDownloading && typeof viewMode === 'number' && imageBatch && imageBatch[viewMode]) {
             const img = imageBatch[viewMode];
+            setDownloadError(null);
+            setIsDownloading(true);
             try {
-                const response = await fetch(img.path);
-                const blob = await response.blob();
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = img.filename; // Use the filename from the image info
-                document.body.appendChild(a);
-                a.click();
-                window.URL.revokeObjectURL(url);
-                document.body.removeChild(a);
+                await downloadImage(img.path, img.filename);
             } catch (error) {
                 console.error('Download failed:', error);
+                setDownloadError({
+                    path: img.path,
+                    message: error instanceof Error ? error.message : 'Download failed. Try again.'
+                });
+            } finally {
+                setIsDownloading(false);
             }
         }
     };
 
     const showCarousel = imageBatch && imageBatch.length > 1;
     const isSingleImageView = typeof viewMode === 'number';
-    const canSendToEdit = !isLoading && isSingleImageView && imageBatch && imageBatch[viewMode];
-    const canSendToVideo = !isLoading && isSingleImageView && imageBatch && imageBatch[viewMode] && Boolean(onSendToVideo);
-    const canDownload = !isLoading && isSingleImageView && imageBatch && imageBatch[viewMode];
+    const canSendToEdit = !isLoading && !isPreparing && isSingleImageView && imageBatch && imageBatch[viewMode];
+    const canSendToVideo =
+        !isLoading && !isPreparing && isSingleImageView && imageBatch && imageBatch[viewMode] && Boolean(onSendToVideo);
+    const canDownload = !isLoading && !isPreparing && isSingleImageView && imageBatch && imageBatch[viewMode];
 
     const [lightboxOpen, setLightboxOpen] = React.useState(false);
 
@@ -192,7 +132,8 @@ export function ImageOutput({
             setElapsedSeconds(0);
             return;
         }
-        const interval = setInterval(() => setElapsedSeconds((s) => s + 1), 1000);
+        const startedAt = Date.now();
+        const interval = setInterval(() => setElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000)), 1000);
         return () => clearInterval(interval);
     }, [isLoading]);
 
@@ -201,17 +142,19 @@ export function ImageOutput({
         return imageBatch.map((img) => ({
             url: img.path,
             filename: img.filename,
-            alt: altText,
+            alt: altText
         }));
     }, [imageBatch, altText]);
 
     return (
-        <div className='relative flex h-full min-h-[300px] w-full flex-col items-center justify-between gap-4 overflow-hidden rounded-md border border-border bg-card p-5 shadow-[0_1px_0_0_var(--border)]'>
-            <div className='absolute right-5 top-4 font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground'>
-                {!isLoading && imageBatch && imageBatch.length > 0 ? `${typeof viewMode === 'number' ? viewMode + 1 : '·'} / ${imageBatch.length}` : ''}
+        <div className='border-border bg-card relative flex h-full min-h-[300px] w-full flex-col items-center justify-between gap-4 overflow-hidden rounded-md border p-5 shadow-[0_1px_0_0_var(--border)]'>
+            <div className='text-muted-foreground absolute top-4 right-5 font-mono text-[10px] tracking-[0.18em] uppercase'>
+                {!isLoading && imageBatch && imageBatch.length > 0
+                    ? `${typeof viewMode === 'number' ? viewMode + 1 : '·'} / ${imageBatch.length}`
+                    : ''}
             </div>
             <div className='relative flex h-full w-full flex-grow items-center justify-center overflow-hidden'>
-                {isLoading ? (
+                {isLoading || isPreparing ? (
                     streamingPreviewImages && streamingPreviewImages.size > 0 ? (
                         // Show streaming preview images
                         streamingPreviewImages.size === 1 ? (
@@ -226,20 +169,24 @@ export function ImageOutput({
                                         <div className='relative'>
                                             <Image
                                                 src={dataUrl}
-                                                alt='Streaming preview — still refining'
+                                                alt='Image preview'
                                                 width={512}
                                                 height={512}
-                                                className='h-auto w-auto max-h-full max-w-full object-contain'
+                                                className='h-auto max-h-full w-auto max-w-full object-contain'
                                                 style={responsiveContainImageStyle}
                                                 unoptimized
                                             />
                                             {/* Gradient scrim anchored to image bottom */}
                                             <div className='pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/50 to-transparent' />
                                             {/* Status pill anchored to image bottom */}
-                                            <div className='absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full bg-background/80 px-3 py-1.5 backdrop-blur-sm shadow-sm'>
-                                                <Loader2 className='h-3.5 w-3.5 animate-spin text-primary' />
-                                                <p className='text-xs font-medium text-foreground/90'>Refining — not the final image</p>
-                                                <span className='font-mono text-[10px] tabular-nums text-muted-foreground'>{formatElapsed(elapsedSeconds)}</span>
+                                            <div className='bg-background/80 absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full px-3 py-1.5 shadow-sm backdrop-blur-sm'>
+                                                <Loader2 className='text-primary h-3.5 w-3.5 animate-spin' />
+                                                <p role='status' className='text-foreground/90 text-xs font-medium'>
+                                                    {status}
+                                                </p>
+                                                <span className='text-muted-foreground font-mono text-[10px] tabular-nums'>
+                                                    {formatElapsed(elapsedSeconds)}
+                                                </span>
                                             </div>
                                         </div>
                                     );
@@ -248,32 +195,39 @@ export function ImageOutput({
                         ) : (
                             // Multiple images: grid with streaming previews + placeholders
                             <div className='relative flex h-full w-full flex-col items-center justify-center gap-3'>
-                                <div className={`grid ${getGridColsClass(loadingCount ?? streamingPreviewImages.size)} max-h-full w-full max-w-full gap-2 p-1`}>
+                                <div
+                                    className={`grid ${getGridColsClass(loadingCount ?? streamingPreviewImages.size)} max-h-full w-full max-w-full gap-2 p-1`}>
                                     {Array.from({ length: loadingCount ?? streamingPreviewImages.size }, (_, i) => {
                                         const preview = streamingPreviewImages.get(i);
                                         return (
-                                            <div key={i} className={`relative aspect-square overflow-hidden rounded-md bg-muted/20 ${preview ? 'border border-primary/25 shadow-[0_0_0_1px_var(--primary)/10]' : 'border border-dashed border-border'}`}>
+                                            <div
+                                                key={i}
+                                                className={`bg-muted/20 relative aspect-square overflow-hidden rounded-md ${preview ? 'border-primary/25 border shadow-[0_0_0_1px_var(--primary)/10]' : 'border-border border border-dashed'}`}>
                                                 {preview ? (
                                                     <Image
                                                         src={preview}
-                                                        alt={`Streaming preview ${i + 1} — still refining`}
+                                                        alt={`Image ${i + 1} preview`}
                                                         fill
                                                         style={{ objectFit: 'contain' }}
                                                         unoptimized
                                                     />
                                                 ) : (
                                                     <div className='flex h-full w-full flex-col items-center justify-center gap-1.5'>
-                                                        <Loader2 className='h-5 w-5 animate-spin text-muted-foreground/30' />
+                                                        <Loader2 className='text-muted-foreground/30 h-5 w-5 animate-spin' />
                                                     </div>
                                                 )}
                                             </div>
                                         );
                                     })}
                                 </div>
-                                <div className='flex items-center gap-2 rounded-full bg-background/80 px-3 py-1.5 backdrop-blur-sm shadow-sm'>
-                                    <Loader2 className='h-3.5 w-3.5 animate-spin text-primary' />
-                                    <p className='text-xs font-medium text-foreground/90'>Refining — not final results</p>
-                                    <span className='font-mono text-[10px] tabular-nums text-muted-foreground'>{formatElapsed(elapsedSeconds)}</span>
+                                <div className='bg-background/80 flex items-center gap-2 rounded-full px-3 py-1.5 shadow-sm backdrop-blur-sm'>
+                                    <Loader2 className='text-primary h-3.5 w-3.5 animate-spin' />
+                                    <p role='status' className='text-foreground/90 text-xs font-medium'>
+                                        {status}
+                                    </p>
+                                    <span className='text-muted-foreground font-mono text-[10px] tabular-nums'>
+                                        {formatElapsed(elapsedSeconds)}
+                                    </span>
                                 </div>
                             </div>
                         )
@@ -287,12 +241,12 @@ export function ImageOutput({
                                 className='blur-md filter'
                                 unoptimized
                             />
-                            <div className='absolute inset-0 flex items-center justify-center bg-background/50'>
-                                <GenerationLoader elapsedSeconds={elapsedSeconds} quality={loadingQuality} count={loadingCount} />
+                            <div className='bg-background/50 absolute inset-0 flex items-center justify-center'>
+                                <GenerationLoader elapsedSeconds={elapsedSeconds} status={status} />
                             </div>
                         </div>
                     ) : (
-                        <GenerationLoader elapsedSeconds={elapsedSeconds} quality={loadingQuality} count={loadingCount} />
+                        <GenerationLoader elapsedSeconds={elapsedSeconds} status={status} />
                     )
                 ) : imageBatch && imageBatch.length > 0 ? (
                     viewMode === 'grid' ? (
@@ -301,9 +255,8 @@ export function ImageOutput({
                             {imageBatch.map((img, index) => (
                                 <button
                                     key={img.filename}
-                                    className='relative aspect-square overflow-hidden rounded border border-border hover:border-foreground/50 transition-colors focus:outline-none focus:ring-2 focus:ring-ring'
-                                    onClick={() => onViewChange(index)}
-                                >
+                                    className='border-border hover:border-foreground/50 focus:ring-ring relative aspect-square overflow-hidden rounded border transition-colors focus:ring-2 focus:outline-none'
+                                    onClick={() => onViewChange(index)}>
                                     <Image
                                         src={img.path}
                                         alt={`Generated image ${index + 1}`}
@@ -319,19 +272,19 @@ export function ImageOutput({
                     ) : imageBatch[viewMode] ? (
                         <>
                             <button
-                                className='relative flex h-full w-full items-center justify-center cursor-zoom-in group focus:outline-none'
+                                className='group relative flex h-full w-full cursor-zoom-in items-center justify-center focus:outline-none'
                                 onClick={() => setLightboxOpen(true)}>
                                 <Image
                                     src={imageBatch[viewMode].path}
                                     alt={altText}
                                     width={512}
                                     height={512}
-                                    className='h-auto w-auto max-h-full max-w-full object-contain'
+                                    className='h-auto max-h-full w-auto max-w-full object-contain'
                                     style={responsiveContainImageStyle}
                                     unoptimized
                                     {...eagerImageProps}
                                 />
-                                <div className='absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity bg-background/50 rounded p-1 text-foreground backdrop-blur-sm'>
+                                <div className='bg-background/50 text-foreground absolute top-2 right-2 rounded p-1 opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100'>
                                     <Maximize2 className='h-4 w-4' />
                                 </div>
                             </button>
@@ -343,25 +296,28 @@ export function ImageOutput({
                             />
                         </>
                     ) : (
-                        <div className='text-center text-muted-foreground/70'>
+                        <div className='text-muted-foreground/70 text-center'>
                             <p>Error displaying image.</p>
                         </div>
                     )
                 ) : (
                     <div className='flex flex-col items-center gap-3 text-center'>
-                        <div className='flex h-16 w-16 items-center justify-center rounded-full border border-dashed border-border'>
-                            <div className='h-2 w-2 rounded-full bg-primary/60' />
+                        <div className='border-border flex h-16 w-16 items-center justify-center rounded-full border border-dashed'>
+                            <div className='bg-primary/60 h-2 w-2 rounded-full' />
                         </div>
-                        <p className='font-display text-2xl italic text-muted-foreground'>
-                            No image yet
-                        </p>
+                        <p className='font-display text-muted-foreground text-2xl italic'>No image yet</p>
                     </div>
                 )}
             </div>
 
+            {downloadError && typeof viewMode === 'number' && imageBatch?.[viewMode]?.path === downloadError.path && (
+                <p role='alert' className='text-destructive text-sm'>
+                    {downloadError.message}
+                </p>
+            )}
             <div className='flex h-10 w-full shrink-0 items-center justify-center gap-4'>
                 {showCarousel && (
-                    <div className='flex items-center gap-1.5 rounded-md border border-border bg-muted/50 p-1'>
+                    <div className='border-border bg-muted/50 flex items-center gap-1.5 rounded-md border p-1'>
                         <Button
                             variant='ghost'
                             size='icon'
@@ -383,7 +339,7 @@ export function ImageOutput({
                                 className={cn(
                                     'h-8 w-8 overflow-hidden rounded p-0.5',
                                     viewMode === index
-                                        ? 'ring-2 ring-ring ring-offset-1 ring-offset-black'
+                                        ? 'ring-ring ring-2 ring-offset-1 ring-offset-black'
                                         : 'opacity-60 hover:opacity-100'
                                 )}
                                 onClick={() => onViewChange(index)}
@@ -406,9 +362,9 @@ export function ImageOutput({
                         variant='outline'
                         size='sm'
                         onClick={handleDownload}
-                        disabled={!canDownload}
+                        disabled={!canDownload || isDownloading}
                         className={cn(
-                            'shrink-0 border-border text-foreground/90 hover:bg-muted/60 hover:text-foreground disabled:pointer-events-none disabled:opacity-50',
+                            'border-border text-foreground/90 hover:bg-muted/60 hover:text-foreground shrink-0 disabled:pointer-events-none disabled:opacity-50',
                             showCarousel && viewMode === 'grid' ? 'invisible' : 'visible'
                         )}>
                         <Download className='mr-2 h-4 w-4' />
@@ -420,7 +376,7 @@ export function ImageOutput({
                         onClick={handleSendClick}
                         disabled={!canSendToEdit}
                         className={cn(
-                            'shrink-0 border-border text-foreground/90 hover:bg-muted/60 hover:text-foreground disabled:pointer-events-none disabled:opacity-50',
+                            'border-border text-foreground/90 hover:bg-muted/60 hover:text-foreground shrink-0 disabled:pointer-events-none disabled:opacity-50',
                             showCarousel && viewMode === 'grid' ? 'invisible' : 'visible'
                         )}>
                         <Send className='mr-2 h-4 w-4' />

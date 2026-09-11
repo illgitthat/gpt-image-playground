@@ -1,8 +1,8 @@
 'use client';
 
+import { ImageLightbox, type LightboxMedia } from '@/components/image-lightbox';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter } from '@/components/ui/card';
-import { ImageLightbox, type LightboxMedia } from '@/components/image-lightbox';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Slider } from '@/components/ui/slider';
@@ -10,6 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { type GptImageModel } from '@/lib/cost-utils';
 import { compressImagesForUpload } from '@/lib/image-compress';
+import { IMAGE_REQUESTS_PER_MINUTE, MAX_IMAGES } from '@/lib/image-options';
 import {
     Square,
     RectangleHorizontal,
@@ -28,7 +29,8 @@ import {
     Upload,
     X,
     ClipboardPaste,
-    ImagePlus
+    ImagePlus,
+    Undo2
 } from 'lucide-react';
 import Image from 'next/image';
 import * as React from 'react';
@@ -79,6 +81,10 @@ type GenerationFormProps = {
     enhanceError: string | null;
     onSurpriseMe: () => void;
     isSurprising: boolean;
+    canUndoPrompt: boolean;
+    onUndoPrompt: () => void;
+    onCancel: () => void;
+    isCancelling: boolean;
 };
 
 const RadioItemWithIcon = ({
@@ -103,8 +109,8 @@ const RadioItemWithIcon = ({
         />
         <Label
             htmlFor={id}
-            className={`flex items-center gap-2 text-base text-foreground/90 ${disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}>
-            <Icon className='h-5 w-5 text-muted-foreground' />
+            className={`text-foreground/90 flex items-center gap-2 text-base ${disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}>
+            <Icon className='text-muted-foreground h-5 w-5' />
             {label}
         </Label>
     </div>
@@ -142,10 +148,13 @@ export function GenerationForm({
     isEnhancingPrompt,
     enhanceError,
     onSurpriseMe,
-    isSurprising
+    isSurprising,
+    canUndoPrompt,
+    onUndoPrompt,
+    onCancel,
+    isCancelling
 }: GenerationFormProps) {
     const showCompression = outputFormat === 'jpeg' || outputFormat === 'webp';
-    const locksBackgroundToAuto = model === 'gpt-image-2';
     const [imageAddError, setImageAddError] = React.useState<string | null>(null);
     const [isPastingImage, setIsPastingImage] = React.useState(false);
     const [isDraggingOver, setIsDraggingOver] = React.useState(false);
@@ -153,12 +162,25 @@ export function GenerationForm({
     const refImageInputRef = React.useRef<HTMLInputElement>(null);
     const [lightboxOpen, setLightboxOpen] = React.useState(false);
     const [lightboxIndex, setLightboxIndex] = React.useState(0);
+    const generateButtonRef = React.useRef<HTMLButtonElement>(null);
+    const cancelledByUser = React.useRef(false);
+
+    React.useEffect(() => {
+        if (!isLoading && cancelledByUser.current) {
+            generateButtonRef.current?.focus();
+            cancelledByUser.current = false;
+        }
+    }, [isLoading]);
+
+    React.useEffect(() => {
+        if (outputFormat === 'webp' && compression[0] === 0) setCompression([1]);
+    }, [outputFormat, compression, setCompression]);
 
     const lightboxMedia: LightboxMedia[] = React.useMemo(
         () =>
             referenceImagePreviewUrls.map((url, i) => ({
                 url,
-                alt: `Reference image ${i + 1}`,
+                alt: `Reference image ${i + 1}`
             })),
         [referenceImagePreviewUrls]
     );
@@ -198,12 +220,6 @@ export function GenerationForm({
         }
     };
 
-    React.useEffect(() => {
-        if (locksBackgroundToAuto && background !== 'auto') {
-            setBackground('auto');
-        }
-    }, [background, locksBackgroundToAuto, setBackground]);
-
     const addReferenceImages = (files: File[]) => {
         if (files.length === 0) return;
         setImageAddError(null);
@@ -214,7 +230,9 @@ export function GenerationForm({
         }
         const filesToAdd = files.slice(0, availableSlots);
         if (files.length > filesToAdd.length) {
-            setImageAddError(`Only ${availableSlots} slot${availableSlots === 1 ? '' : 's'} left (max ${maxReferenceImages}).`);
+            setImageAddError(
+                `Only ${availableSlots} slot${availableSlots === 1 ? '' : 's'} left (max ${maxReferenceImages}).`
+            );
         }
         compressImagesForUpload(filesToAdd)
             .then((processedFiles) => {
@@ -300,7 +318,7 @@ export function GenerationForm({
             size,
             quality,
             output_format: outputFormat,
-            background: locksBackgroundToAuto ? 'auto' : background,
+            background,
             moderation: 'low',
             model,
             referenceImages
@@ -312,11 +330,53 @@ export function GenerationForm({
     };
 
     return (
-        <Card className='flex w-full flex-col rounded-md border border-border bg-card shadow-[0_1px_0_0_var(--border)] lg:h-full lg:overflow-hidden'>
+        <Card className='border-border bg-card flex w-full flex-col rounded-md border shadow-[0_1px_0_0_var(--border)] lg:h-full lg:overflow-hidden'>
             <form onSubmit={handleSubmit} className='flex flex-1 flex-col lg:h-full lg:overflow-hidden'>
                 <CardContent className='flex-1 space-y-5 p-4 lg:overflow-y-auto'>
+                    <div className='space-y-2'>
+                        <Label className='text-foreground block'>Model</Label>
+                        <RadioGroup
+                            aria-label='Image model'
+                            value={model}
+                            onValueChange={(value) => setModel(value as GptImageModel)}
+                            disabled={isLoading}
+                            className='grid grid-cols-2 gap-3'>
+                            <Label
+                                htmlFor='model-flare'
+                                className='border-border bg-background has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-primary/5 grid cursor-pointer grid-cols-[auto_1fr] items-center gap-x-2 gap-y-1 rounded-md border p-3'>
+                                <RadioGroupItem
+                                    value='gpt-image-2.5-flare'
+                                    id='model-flare'
+                                    aria-label='Flare'
+                                    aria-describedby='model-flare-description'
+                                />
+                                <span>Flare</span>
+                                <span
+                                    id='model-flare-description'
+                                    className='text-muted-foreground col-start-2 text-xs font-normal'>
+                                    Faster generation
+                                </span>
+                            </Label>
+                            <Label
+                                htmlFor='model-sunburst'
+                                className='border-border bg-background has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-primary/5 grid cursor-pointer grid-cols-[auto_1fr] items-center gap-x-2 gap-y-1 rounded-md border p-3'>
+                                <RadioGroupItem
+                                    value='gpt-image-2.5-sunburst'
+                                    id='model-sunburst'
+                                    aria-label='Sunburst'
+                                    aria-describedby='model-sunburst-description'
+                                />
+                                <span>Sunburst</span>
+                                <span
+                                    id='model-sunburst-description'
+                                    className='text-muted-foreground col-start-2 text-xs font-normal'>
+                                    Higher quality
+                                </span>
+                            </Label>
+                        </RadioGroup>
+                    </div>
                     <div className='space-y-1.5'>
-                        <div className='flex items-center justify-between gap-2'>
+                        <div className='flex flex-wrap items-center justify-between gap-2'>
                             <Label htmlFor='prompt' className='text-foreground'>
                                 Prompt
                             </Label>
@@ -327,12 +387,33 @@ export function GenerationForm({
                                         variant='ghost'
                                         size='icon'
                                         onClick={onOpenPasswordDialog}
-                                        className='h-7 w-7 text-muted-foreground hover:text-foreground'
+                                        className='text-muted-foreground hover:text-foreground h-7 w-7'
                                         aria-label='Configure Password'>
-                                        {clientPasswordHash ? <Lock className='h-3.5 w-3.5' /> : <LockOpen className='h-3.5 w-3.5' />}
+                                        {clientPasswordHash ? (
+                                            <Lock className='h-3.5 w-3.5' />
+                                        ) : (
+                                            <LockOpen className='h-3.5 w-3.5' />
+                                        )}
                                     </Button>
                                 )}
-                                {enhanceError && <span className='text-xs text-destructive'>{enhanceError}</span>}
+                                {enhanceError && <span className='text-destructive text-xs'>{enhanceError}</span>}
+                                {canUndoPrompt && (
+                                    <Tooltip>
+                                        <TooltipTrigger asChild>
+                                            <Button
+                                                type='button'
+                                                variant='ghost'
+                                                size='icon'
+                                                className='h-8 w-8'
+                                                onClick={onUndoPrompt}
+                                                disabled={isLoading || isEnhancingPrompt || isSurprising}
+                                                aria-label='Undo prompt change'>
+                                                <Undo2 className='h-4 w-4' />
+                                            </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent>Undo prompt change</TooltipContent>
+                                    </Tooltip>
+                                )}
                                 <Tooltip>
                                     <TooltipTrigger asChild>
                                         <Button
@@ -341,7 +422,7 @@ export function GenerationForm({
                                             size='sm'
                                             onClick={onSurpriseMe}
                                             disabled={isLoading || isSurprising || isEnhancingPrompt}
-                                            className='h-8 gap-1 rounded-full border border-border bg-muted/30 px-3 text-xs text-foreground/90 hover:bg-muted/80 hover:text-foreground'>
+                                            className='border-border bg-muted/30 text-foreground/90 hover:bg-muted/80 hover:text-foreground h-8 gap-1 rounded-full border px-3 text-xs'>
                                             {isSurprising ? (
                                                 <Loader2 className='h-4 w-4 animate-spin' />
                                             ) : (
@@ -351,7 +432,7 @@ export function GenerationForm({
                                         </Button>
                                     </TooltipTrigger>
                                     <TooltipContent className='bg-background text-foreground'>
-                                        Generate a fresh, unexpected image idea with GPT's latest chat model.
+                                        Generate a new image idea.
                                     </TooltipContent>
                                 </Tooltip>
                                 <Tooltip>
@@ -361,8 +442,8 @@ export function GenerationForm({
                                             variant='ghost'
                                             size='sm'
                                             onClick={onEnhancePrompt}
-                                            disabled={isLoading || isEnhancingPrompt || !prompt.trim()}
-                                            className='h-8 gap-1 rounded-full border border-border bg-muted/30 px-3 text-xs text-foreground/90 hover:bg-muted/80 hover:text-foreground'>
+                                            disabled={isLoading || isEnhancingPrompt || isSurprising || !prompt.trim()}
+                                            className='border-border bg-muted/30 text-foreground/90 hover:bg-muted/80 hover:text-foreground h-8 gap-1 rounded-full border px-3 text-xs'>
                                             {isEnhancingPrompt ? (
                                                 <Loader2 className='h-4 w-4 animate-spin' />
                                             ) : (
@@ -372,7 +453,7 @@ export function GenerationForm({
                                         </Button>
                                     </TooltipTrigger>
                                     <TooltipContent className='bg-background text-foreground'>
-                                        Refine the prompt with GPT's latest chat model.
+                                        Clarify the prompt while keeping your intent.
                                     </TooltipContent>
                                 </Tooltip>
                             </div>
@@ -385,7 +466,7 @@ export function GenerationForm({
                             required
                             disabled={isLoading}
                             autoFocus
-                            className={`min-h-[80px] rounded-md border bg-background text-foreground placeholder:text-muted-foreground/70 focus:border-ring focus:ring-ring ${
+                            className={`bg-background text-foreground placeholder:text-muted-foreground/70 focus:border-ring focus:ring-ring min-h-[80px] rounded-md border ${
                                 !prompt && !isLoading ? 'attention-pulse' : 'border-border'
                             }`}
                         />
@@ -400,10 +481,10 @@ export function GenerationForm({
                         <div className='flex items-center justify-between gap-2'>
                             <Label className='text-foreground'>
                                 Reference Images
-                                <span className='ml-1 text-xs font-normal text-muted-foreground'>(optional)</span>
+                                <span className='text-muted-foreground ml-1 text-xs font-normal'>(optional)</span>
                             </Label>
                             {referenceImages.length > 0 && (
-                                <span className='text-xs text-muted-foreground'>
+                                <span className='text-muted-foreground text-xs'>
                                     {referenceImages.length}/{maxReferenceImages}
                                 </span>
                             )}
@@ -414,36 +495,51 @@ export function GenerationForm({
                                 onClick={handleOpenRefImagePicker}
                                 onMouseDown={(event) => event.preventDefault()}
                                 disabled={isLoading || referenceImages.length >= maxReferenceImages}
-                                className={`flex min-h-[80px] w-full cursor-pointer flex-col items-center justify-center gap-2 rounded-md border-2 border-dashed bg-background px-3 py-4 text-sm transition-colors ${
+                                className={`bg-background flex min-h-[80px] w-full cursor-pointer flex-col items-center justify-center gap-2 rounded-md border-2 border-dashed px-3 py-4 text-sm transition-colors ${
                                     isDraggingOver
                                         ? 'border-primary bg-primary/5 text-primary'
                                         : 'border-border text-muted-foreground hover:bg-muted/30 hover:text-foreground'
                                 } disabled:cursor-not-allowed disabled:opacity-50`}>
                                 <ImagePlus className='h-5 w-5' />
-                                <span>{isDraggingOver ? 'Drop images here' : 'Drop, paste, or click to add images'}</span>
-                                <span className='text-xs text-muted-foreground/70'>PNG, JPEG, WebP · Ctrl+V to paste</span>
+                                <span>
+                                    {isDraggingOver ? 'Drop images here' : 'Drop, paste, or click to add images'}
+                                </span>
+                                <span className='text-muted-foreground/70 text-xs'>
+                                    PNG, JPEG, WebP · Ctrl+V to paste
+                                </span>
                             </button>
                         ) : (
-                            <div className={`space-y-2 rounded-md p-1 transition-colors ${isDraggingOver ? 'bg-primary/5 ring-2 ring-primary ring-offset-1 ring-offset-background' : ''}`}>
+                            <div
+                                className={`space-y-2 rounded-md p-1 transition-colors ${isDraggingOver ? 'bg-primary/5 ring-primary ring-offset-background ring-2 ring-offset-1' : ''}`}>
                                 <div className='flex flex-wrap gap-2'>
                                     {referenceImagePreviewUrls.map((url, index) => (
                                         <div key={index} className='group relative'>
                                             <button
                                                 type='button'
-                                                onClick={() => { setLightboxIndex(index); setLightboxOpen(true); }}
-                                                className='cursor-zoom-in rounded-md focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1'>
+                                                onClick={() => {
+                                                    setLightboxIndex(index);
+                                                    setLightboxOpen(true);
+                                                }}
+                                                className='focus:ring-ring relative cursor-zoom-in rounded-md focus:ring-2 focus:ring-offset-1 focus:outline-none'>
                                                 <Image
                                                     src={url}
                                                     alt={`Reference ${index + 1}`}
                                                     width={64}
                                                     height={64}
-                                                    className='h-16 w-16 rounded-md border border-border object-cover'
+                                                    className='border-border h-16 w-16 rounded-md border object-cover'
                                                 />
+                                                <span
+                                                    aria-hidden='true'
+                                                    className='bg-foreground/80 text-background pointer-events-none absolute bottom-1 left-1 rounded px-1 font-mono text-[10px]'>
+                                                    {index + 1}
+                                                </span>
                                             </button>
                                             <button
                                                 type='button'
                                                 onClick={() => handleRemoveRefImage(index)}
-                                                className='absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-sm transition-colors hover:bg-destructive hover:text-destructive-foreground'>
+                                                disabled={isLoading}
+                                                aria-label={`Remove reference ${index + 1}`}
+                                                className='border-border bg-background text-muted-foreground hover:bg-destructive hover:text-destructive-foreground absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full border shadow-sm transition-colors'>
                                                 <X className='h-3 w-3' />
                                             </button>
                                         </div>
@@ -454,7 +550,7 @@ export function GenerationForm({
                                             onClick={handleOpenRefImagePicker}
                                             onMouseDown={(event) => event.preventDefault()}
                                             disabled={isLoading}
-                                            className={`flex h-16 w-16 cursor-pointer items-center justify-center rounded-md border border-dashed bg-background transition-colors ${
+                                            className={`bg-background flex h-16 w-16 cursor-pointer items-center justify-center rounded-md border border-dashed transition-colors ${
                                                 isDraggingOver
                                                     ? 'border-primary text-primary'
                                                     : 'border-border text-muted-foreground hover:bg-muted/30 hover:text-foreground'
@@ -470,8 +566,10 @@ export function GenerationForm({
                                         variant='outline'
                                         size='sm'
                                         onClick={handleRefPasteFromClipboard}
-                                        disabled={isLoading || isPastingImage || referenceImages.length >= maxReferenceImages}
-                                        className='h-7 border-border text-xs text-muted-foreground hover:bg-muted/60 hover:text-foreground'>
+                                        disabled={
+                                            isLoading || isPastingImage || referenceImages.length >= maxReferenceImages
+                                        }
+                                        className='border-border text-muted-foreground hover:bg-muted/60 hover:text-foreground h-7 text-xs'>
                                         {isPastingImage ? (
                                             <Loader2 className='mr-1.5 h-3 w-3 animate-spin' />
                                         ) : (
@@ -492,27 +590,34 @@ export function GenerationForm({
                             disabled={isLoading || referenceImages.length >= maxReferenceImages}
                             className='hidden'
                         />
-                        {imageAddError && <p className='text-xs text-destructive'>{imageAddError}</p>}
+                        {imageAddError && <p className='text-destructive text-xs'>{imageAddError}</p>}
                     </div>
 
                     <div className='space-y-2'>
-                        <Label htmlFor='n-slider' className='text-foreground'>
-                            Number of Images: {n[0]}
-                        </Label>
-                        <Slider
-                            id='n-slider'
-                            min={1}
-                            max={5}
-                            step={1}
-                            value={n}
-                            onValueChange={setN}
+                        <Label className='text-foreground'>Images</Label>
+                        <RadioGroup
+                            aria-label='Number of images'
+                            value={String(n[0])}
+                            onValueChange={(value) => setN([Number(value)])}
                             disabled={isLoading}
-                            className='mt-3 [&>button]:border-background [&>button]:bg-primary [&>button]:ring-offset-black [&>span:first-child]:h-1 [&>span:first-child>span]:bg-primary'
-                        />
+                            className='flex gap-5'>
+                            {Array.from({ length: MAX_IMAGES }, (_, index) => index + 1).map((count) => (
+                                <RadioItemWithIcon
+                                    key={count}
+                                    id={`count-${count}`}
+                                    value={String(count)}
+                                    label={`${count} image${count === 1 ? '' : 's'}`}
+                                    Icon={count === 1 ? Tally1 : Tally2}
+                                />
+                            ))}
+                        </RadioGroup>
+                        <p className='text-muted-foreground text-xs'>
+                            Up to {IMAGE_REQUESTS_PER_MINUTE} images per minute, per model.
+                        </p>
                     </div>
 
                     <div className='space-y-3'>
-                        <Label className='block text-foreground'>Size</Label>
+                        <Label className='text-foreground block'>Size</Label>
                         <RadioGroup
                             value={size}
                             onValueChange={(value) => setSize(value as GenerationFormData['size'])}
@@ -537,8 +642,10 @@ export function GenerationForm({
 
                     <div className='space-y-3'>
                         <div>
-                            <Label className='block text-foreground'>Quality</Label>
-                            <span className='text-xs text-muted-foreground'>Higher quality takes longer to generate</span>
+                            <Label className='text-foreground block'>Quality</Label>
+                            <span className='text-muted-foreground text-xs'>
+                                Higher quality takes longer to generate
+                            </span>
                         </div>
                         <RadioGroup
                             value={quality}
@@ -547,47 +654,47 @@ export function GenerationForm({
                             className='flex flex-wrap gap-x-5 gap-y-3'>
                             <RadioItemWithIcon value='auto' id='quality-auto' label='Auto' Icon={Sparkles} />
                             <RadioItemWithIcon value='low' id='quality-low' label='Low' Icon={Tally1} />
-                            <RadioItemWithIcon
-                                value='medium'
-                                id='quality-medium'
-                                label='Medium'
-                                Icon={Tally2}
-                            />
+                            <RadioItemWithIcon value='medium' id='quality-medium' label='Medium' Icon={Tally2} />
                             <RadioItemWithIcon value='high' id='quality-high' label='High' Icon={Tally3} />
                         </RadioGroup>
                     </div>
 
-                    {!locksBackgroundToAuto && (
-                        <div className='space-y-3'>
-                            <Label className='block text-foreground'>Background</Label>
-                            <RadioGroup
-                                value={background}
-                                onValueChange={(value) => setBackground(value as GenerationFormData['background'])}
-                                disabled={isLoading}
-                                className='flex flex-wrap gap-x-5 gap-y-3'>
-                                <RadioItemWithIcon value='auto' id='bg-auto' label='Auto' Icon={Sparkles} />
-                                <RadioItemWithIcon value='opaque' id='bg-opaque' label='Opaque' Icon={BrickWall} />
-                                <RadioItemWithIcon
-                                    value='transparent'
-                                    id='bg-transparent'
-                                    label='Transparent'
-                                    Icon={Eraser}
-                                />
-                            </RadioGroup>
-                        </div>
-                    )}
+                    <div className='space-y-3'>
+                        <Label className='text-foreground block'>Background</Label>
+                        <RadioGroup
+                            value={background}
+                            onValueChange={(value) => {
+                                setBackground(value as GenerationFormData['background']);
+                                if (value === 'transparent' && outputFormat === 'jpeg') setOutputFormat('png');
+                            }}
+                            disabled={isLoading}
+                            className='flex flex-wrap gap-x-5 gap-y-3'>
+                            <RadioItemWithIcon value='auto' id='bg-auto' label='Auto' Icon={Sparkles} />
+                            <RadioItemWithIcon value='opaque' id='bg-opaque' label='Opaque' Icon={BrickWall} />
+                            <RadioItemWithIcon
+                                value='transparent'
+                                id='bg-transparent'
+                                label='Transparent'
+                                Icon={Eraser}
+                            />
+                        </RadioGroup>
+                    </div>
 
                     <div className='space-y-3'>
-                        <Label className='block text-foreground'>Output Format</Label>
+                        <Label className='text-foreground block'>Output Format</Label>
                         <RadioGroup
                             value={outputFormat}
-                            onValueChange={(value) =>
-                                setOutputFormat(value as GenerationFormData['output_format'])
-                            }
+                            onValueChange={(value) => setOutputFormat(value as GenerationFormData['output_format'])}
                             disabled={isLoading}
                             className='flex flex-wrap gap-x-5 gap-y-3'>
                             <RadioItemWithIcon value='png' id='format-png' label='PNG' Icon={FileImage} />
-                            <RadioItemWithIcon value='jpeg' id='format-jpeg' label='JPEG' Icon={FileImage} />
+                            <RadioItemWithIcon
+                                value='jpeg'
+                                id='format-jpeg'
+                                label='JPEG'
+                                Icon={FileImage}
+                                disabled={background === 'transparent'}
+                            />
                             <RadioItemWithIcon value='webp' id='format-webp' label='WebP' Icon={FileImage} />
                         </RadioGroup>
                     </div>
@@ -599,26 +706,47 @@ export function GenerationForm({
                             </Label>
                             <Slider
                                 id='compression-slider'
-                                min={0}
+                                min={outputFormat === 'webp' ? 1 : 0}
                                 max={100}
                                 step={1}
                                 value={compression}
                                 onValueChange={setCompression}
                                 disabled={isLoading}
-                                className='mt-3 [&>button]:border-background [&>button]:bg-primary [&>button]:ring-offset-black [&>span:first-child]:h-1 [&>span:first-child>span]:bg-primary'
+                                className='[&>button]:border-background [&>button]:bg-primary [&>span:first-child>span]:bg-primary mt-3 [&>button]:ring-offset-black [&>span:first-child]:h-1'
                             />
                         </div>
                     )}
                 </CardContent>
-                <CardFooter className='border-t border-border bg-muted/20 p-4'>
+                <CardFooter className='border-border bg-muted/20 gap-2 border-t p-4'>
                     <Button
+                        ref={generateButtonRef}
                         type='submit'
-                        disabled={isLoading || !prompt}
+                        disabled={isLoading || isEnhancingPrompt || isSurprising || !prompt.trim()}
                         title={!prompt && !isLoading ? 'Enter a prompt to enable' : undefined}
-                        className='group relative flex w-full items-center justify-center gap-2 rounded-md border border-primary/60 bg-primary py-5 font-mono text-[11px] uppercase tracking-[0.22em] text-primary-foreground transition-all hover:brightness-105 hover:shadow-[0_8px_30px_-8px_oklch(0.86_0.20_125_/_0.55)] disabled:!pointer-events-auto disabled:cursor-not-allowed disabled:border-border disabled:bg-transparent disabled:text-muted-foreground disabled:opacity-100 disabled:shadow-none'>
+                        className='group border-primary/60 bg-primary text-primary-foreground disabled:border-border disabled:text-muted-foreground relative flex min-w-0 flex-1 items-center justify-center gap-2 rounded-md border py-5 font-mono text-[11px] tracking-[0.22em] uppercase transition-all hover:shadow-[0_8px_30px_-8px_oklch(0.86_0.20_125_/_0.55)] hover:brightness-105 disabled:!pointer-events-auto disabled:cursor-not-allowed disabled:bg-transparent disabled:opacity-100 disabled:shadow-none'>
                         {isLoading && <Loader2 className='h-4 w-4 animate-spin' />}
                         <span>{isLoading ? 'Generating…' : !prompt ? 'Enter a prompt …' : 'Generate →'}</span>
                     </Button>
+                    {isLoading && (
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Button
+                                    type='button'
+                                    variant='outline'
+                                    size='icon'
+                                    className='h-10 w-10 shrink-0'
+                                    onClick={() => {
+                                        cancelledByUser.current = true;
+                                        onCancel();
+                                    }}
+                                    disabled={isCancelling}
+                                    aria-label='Cancel generation'>
+                                    <Square className='h-4 w-4 fill-current' />
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Cancel generation</TooltipContent>
+                        </Tooltip>
+                    )}
                 </CardFooter>
             </form>
             <ImageLightbox
