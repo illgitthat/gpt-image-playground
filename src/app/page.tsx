@@ -57,7 +57,6 @@ export type HistoryMetadata = {
     referenceImageFilenames?: string[];
 };
 
-const MAX_PROMPT_ENHANCE_IMAGES = 3;
 
 const explicitModeClient = process.env.NEXT_PUBLIC_IMAGE_STORAGE_MODE;
 
@@ -398,11 +397,9 @@ export default function HomePage() {
 
         if (targetMode === 'generate' && genReferenceImages.length > 0) {
             try {
-                const filesToSend = genReferenceImages.slice(0, MAX_PROMPT_ENHANCE_IMAGES);
                 referenceImagesPayload = await Promise.all(
-                    filesToSend.map(async (file, index) => ({
-                        dataUrl: await fileToDataUrl(file),
-                        alt: `Reference image ${index + 1}${file.name ? ` (${file.name})` : ''}`
+                    genReferenceImages.map(async (file) => ({
+                        dataUrl: await fileToDataUrl(file)
                     }))
                 );
             } catch (readError) {
@@ -489,11 +486,9 @@ export default function HomePage() {
 
         if (genReferenceImages.length > 0) {
             try {
-                const filesToSend = genReferenceImages.slice(0, MAX_PROMPT_ENHANCE_IMAGES);
                 referenceImagesPayload = await Promise.all(
-                    filesToSend.map(async (file, index) => ({
-                        dataUrl: await fileToDataUrl(file),
-                        alt: `Reference image ${index + 1}${file.name ? ` (${file.name})` : ''}`
+                    genReferenceImages.map(async (file) => ({
+                        dataUrl: await fileToDataUrl(file)
                     }))
                 );
             } catch (readError) {

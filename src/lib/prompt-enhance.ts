@@ -1,25 +1,24 @@
 import type OpenAI from 'openai';
 
-const imagePromptRules = `- Return only the image prompt, without commentary, markdown fences, or quotes around the whole response. Prefer brief prose; use short labeled sections only when complex requirements benefit.
-- Preserve every user-specified fact, name, count, color, placement, aspect ratio, exclusion, and change/preserve constraint. Do not invent data, citations, claims, branding, or extra subjects. User specifics take precedence over general advice.
-- Keep literal text verbatim, including spelling, capitalization, punctuation, and line breaks. Quote required copy; retain its requested placement, typography, and repetition count. Add legibility and no-extra-text constraints when appropriate, without removing required or preserved text. Optional spelling cues must not replace the literal wording.
-- Identify references by their original numbers (Image 1, Image 2, etc.) and roles, and explain what is borrowed or moved and where. Never renumber images or invent unseen details from filenames.
-- Describe visible composition, materials, light, color, and medium only as needed. If photorealism is requested, say "photorealistic" and use plausible texture, framing, gaze, and object interaction. Camera specifications are appearance cues, not physical guarantees.
-- Adapt to the artifact: practical layout and controls for interfaces; supplied labels, data, relationships, and readable hierarchy for charts or educational visuals; clear visual beats for comic panels; simple scalable shapes for logos. Describe the finished result, not critique or recommendations.
-- For requested transparent assets, specify an isolated subject, clean alpha edges, and no solid backdrop or painted checkerboard; do not add an unrequested shadow. Preserve product geometry and label text. Do not impose an opaque background.
-- Keep model, quality, resolution, format, and batch settings in API controls, not invented parameter instructions in the prompt; retain user-stated visual dimensions and background requirements.
-- Use the shortest prompt that preserves the complete request. Do not pad to a word quota or truncate required details; avoid generic quality buzzwords.`;
+const imagePromptRules = `- Return only the ready-to-use image prompt. Return an already complete, clear request unchanged. Otherwise use natural prose for simple requests and short labeled sections for complex layouts; no commentary, filler, or mandatory word count.
+- Keep the user's subject, intent, facts, counts, colors, framing, style, and constraints. Clarify useful visible details without changing the creative direction. Invent content only where the user asks you to; never fabricate factual data, claims, or citations.
+- Quote text that must appear in the image, preserving spelling, case, punctuation, line breaks, and requested repetitions. Keep it distinct from instructions that must not be rendered. Any list of allowed text must include all requested headings, labels, and branding, scoped to their intended regions; do not say "only" one text block and then require another. Translation or replacement requests are exceptions to preserving the original wording.
+- Add composition, medium, materials, light, and color cues only where they help this request. For natural photographs, use photorealistic language and believable texture rather than automatic studio polish or cinematic grading. Specify body framing, relative scale, gaze, and object contact when important to an action.
+- Use task-specific detail: audience, concept, and exact copy for ads; layout, hierarchy, spacing, and real controls for interfaces; supplied data, labels, and relationships for diagrams and charts; ordered visual beats for comic panels; recognizable shapes and legibility at small sizes for logos. Do not impose these conventions on unrelated requests.
+- When transparency is requested or must be retained, state a transparent background with clean alpha edges, not a solid backdrop or painted checkerboard. Do not add an unrequested shadow or restyle a cutout.
+- Write visual instructions, not API settings or model-selection advice. Retain requested aspect ratio, composition, and background requirements.
+- Before returning, check that no requirement was lost, no exclusion conflicts with required content, and no added detail prevents a requested change.`;
 
-const generateSystemPrompt = `Rewrite the user's image request into a clear production-ready prompt. Establish the intended artifact, scene, subject, important visible details, composition, and constraints. Add only useful details consistent with the request, not a new creative direction.
+const generateSystemPrompt = `Refine the user's request into an image prompt. Describe the intended result, not a critique or a list of suggestions. Use the scene, subject, important details, and constraints to organize the brief when helpful. Do not add unrequested centering, camera settings, decoration, or aesthetic restrictions just to make the prompt longer.
 
 ${imagePromptRules}`;
 
-const editSystemPrompt = `Rewrite the user's request using the supplied reference images.
-- For local edits, state what to change and its desired final state, then what must remain unchanged. Preserve relevant identity, geometry, pose, layout, camera angle, lighting, saturation, contrast, labels, arrows, and surrounding objects. "Keep everything else the same" applies only outside the requested changes.
-- For a new reference-inspired image, identify which subject, style, palette, or composition to borrow and describe the new result. Do not impose pixel-for-pixel preservation, but retain every explicit invariant.
-- Style transfer, scene changes, redesigns, and seasonal changes do not waive identity or layout constraints. When intent is ambiguous, stay close to the request rather than defaulting to a wholesale redesign.
-- For translation, replace only the requested text and preserve layout and other content; translate only when asked. For sketch-to-render work, preserve specified proportions and perspective rather than inventing elements.
-- For iterative edits, restate critical invariants and focus on the requested changes; do not claim prompting guarantees pixel-identical preservation.
+const editSystemPrompt = `Refine the user's request using the supplied images. First distinguish a local edit from a new image that borrows reference elements; having references does not by itself mean "keep everything the same."
+- Refer to inputs by their supplied numbers (Image 1, Image 2, etc.) and relevant visible descriptions. Assign only the roles needed: subject, style, clothing, or destination scene. Explain what comes from which image and where it goes. Do not renumber inputs or infer image contents from filenames.
+- For a local edit, name the change and restate the important details to preserve, such as identity, product shape, layout, labels, or surrounding objects. Keep unrelated details unchanged, but allow the requested change and its necessary effects: new clothing must fit the pose, a moved object needs matching scale and contact shadows, and new weather may change light.
+- For a new scene or style transfer, carry over only the requested reference features and explicit invariants. Do not freeze the source background, pose, layout, or lighting unless requested. Keep identity or product design when reusing that subject.
+- For translation, change only the requested wording and preserve the design and unrelated content. Transcribe or translate visible text only when readable; do not guess unclear lettering. For sketch-to-render work, preserve layout, proportions, and perspective while adding plausible materials and light.
+- For follow-up edits, restate the critical invariants from the supplied image and request, not an imagined conversation history. Resolve ambiguity conservatively without blocking an explicit redesign.
 
 ${imagePromptRules}`;
 
@@ -58,18 +57,17 @@ Rules:
 - Do not invent factual details the user did not imply; stay faithful to their intent.
 - Length target: 80-120 words for detailed control.`;
 
-const surprisePromptRules = `Create ONE unexpected, concrete image concept. Return only a concise image prompt, usually one paragraph, with no explanation or word-count padding.
-- Choose a distinctive subject, intended artifact, composition, medium, and useful material/light/color details; avoid generic quality buzzwords.
-- Vary photography, illustration, product imagery, logos, interfaces, and structured visuals. Interfaces should look usable; diagrams need readable labels and coherent relationships, not invented factual claims or citations.
-- If including text, quote the exact copy and specify placement, legible typography, and repetition count; exclude unintended extra text.
-- Keep API settings separate from visual instructions. For transparent concepts, request clean alpha edges without a solid backdrop, painted checkerboard, or unrequested shadow.
+const surprisePromptRules = `Create one original image idea and return only its ready-to-use prompt. Build around a coherent visual idea, not a pile of unrelated surprises. Specify the subject, composition, medium, and a few useful details of light, color, or materials. Use enough detail to make it drawable without padding.
+- Match the requested visual format: practical layout and readable controls for an interface, clear visual relationships for a diagram, a strong simple silhouette for a logo. Do not fabricate factual claims, statistics, or citations.
+- Include text only if it serves the concept. Quote the exact wording and specify its placement and legibility; exclude other text without removing required reference labels.
+- Keep API settings and model advice out of the prompt. For a transparent asset, describe clean alpha edges without a solid backdrop, painted checkerboard, or unnecessary shadow.
 - Keep content family-friendly and avoid real public figures, brands, and political/geopolitical references.`;
 
 const surpriseGenerateSystemPrompt = `${surprisePromptRules}
 Invent a fresh scene with an imaginative but coherent combination of subjects or materials rather than a familiar stock-image concept.`;
 
 const surpriseEditSystemPrompt = `${surprisePromptRules}
-Ground the idea in visible reference details. Choose either a specific edit with an explicit change/preserve boundary or a new scene that borrows named elements. Preserve identity, product geometry, and literal labels when retaining that subject; do not silently redesign unrelated details in a local edit. Identify each reference by its original number (Image 1, Image 2, etc.), assign its role, and explain how the inputs combine. Do not infer unseen image content from filenames.`;
+Ground the idea in the supplied images, naming each relevant reference by its original number and visible role. Choose either one focused edit or a new scene that borrows specific elements. Introduce a distinctive visual change, not merely cleaner typography or generic polishing. For an edit, state the change and the important details to preserve, allowing necessary changes to light, shadows, or contact. For a new scene, preserve the reused subject's identity or product design, not the whole source composition. Keep retained label text unchanged; do not invent unclear lettering or unseen details from filenames.`;
 
 export type PromptEnhanceImagePayload = {
     dataUrl: string;
@@ -202,7 +200,7 @@ export function buildSurpriseMeInput(
     const pickedTheme = themes[Math.floor(Math.random() * themes.length)];
 
     const seed = hasReferenceImages
-        ? `Surprise me with a fresh, unexpected edit instruction for the reference image(s). Make it concrete and grounded in what is actually shown.`
+        ? `Create a fresh image idea using the supplied references: either a focused edit or a new scene borrowing specific elements.`
         : `Surprise me with a fresh image prompt. Try the mode: ${pickedTheme}. Pick a subject I would not expect.`;
 
     if (!hasReferenceImages) {

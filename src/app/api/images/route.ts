@@ -209,7 +209,7 @@ type SettledGenerationBatch = {
     usage?: ApiUsage;
 };
 
-const IMAGE_GENERATION_INSTRUCTIONS = `Create the requested image with the image_generation tool. Treat requests to improve, redesign, or edit a reference as requests for the resulting image. Follow the user's scene, subject, composition, exact quoted text, and constraints without adding unrelated content. Reference images are numbered in input order; use each for its stated role. For edits, change only what is requested and preserve all other details, including identity, geometry, layout, lighting, and labels. API parameters control size, quality, background, and format separately from the prompt.`;
+const IMAGE_GENERATION_INSTRUCTIONS = `Use the image_generation tool to create the requested visual result. Follow the user's brief without adding a new creative direction. Render only text intended to appear in the image, preserving its exact wording unless translation or replacement is requested. Use numbered reference images for their assigned roles. For local edits, preserve unrelated details while allowing the requested change and its necessary effects on lighting, shadows, and contact. For a new scene or style transfer, borrow only the requested reference features; do not freeze the source composition. Honor explicit preservation constraints and requested transparency.`;
 
 const IMAGE_GENERATION_TOOL_CHOICE: OpenAI.Responses.ToolChoiceAllowed = {
     type: 'allowed_tools',

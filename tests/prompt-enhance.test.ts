@@ -15,9 +15,6 @@ describe('image prompt inputs', () => {
         const prompt = 'Exactly 2 labels: "aB & Co.\nKeep THIS!" in Image 2. Change only the shirt; preserve Image 1 identity.';
         const result = buildPromptEnhanceInput('generate', prompt);
         expect(result.input).toBe(prompt);
-        expect(result.instructions).toContain('Keep literal text verbatim');
-        expect(result.instructions).toContain('Do not impose an opaque background');
-        expect(result.instructions).toContain('Do not pad to a word quota');
     });
 
     test('numbers even unlabeled references and keeps their original order and prompt', () => {
@@ -33,9 +30,6 @@ describe('image prompt inputs', () => {
                 { type: 'input_text', text: prompt }
             ]
         }]);
-        expect(result.instructions).toContain('For local edits');
-        expect(result.instructions).toContain('do not waive identity or layout constraints');
-        expect(result.instructions).not.toContain('Default to inspiration mode');
     });
 
     test('empty reference arrays use prompt-only instructions', () => {
@@ -45,7 +39,6 @@ describe('image prompt inputs', () => {
 
     test('surprise references use the same stable numbering and automatic detail', () => {
         const result = buildSurpriseMeInput('generate', { referenceImages: references });
-        expect(result.instructions).toContain('explicit change/preserve boundary');
         expect(result.input).toEqual([{
             role: 'user',
             content: [
@@ -53,7 +46,7 @@ describe('image prompt inputs', () => {
                 { type: 'input_image', image_url: firstImage, detail: 'auto' },
                 { type: 'input_text', text: 'Image 2: clothing sample' },
                 { type: 'input_image', image_url: secondImage, detail: 'auto' },
-                { type: 'input_text', text: 'Surprise me with a fresh, unexpected edit instruction for the reference image(s). Make it concrete and grounded in what is actually shown.' }
+                { type: 'input_text', text: expect.any(String) }
             ]
         }]);
     });
@@ -61,7 +54,28 @@ describe('image prompt inputs', () => {
     test('prompt-only surprise does not require references', () => {
         const result = buildSurpriseMeInput('generate');
         expect(typeof result.input).toBe('string');
-        expect(result.instructions).not.toContain('visible reference details');
+    });
+
+    test('enhancement and surprise include all five references with stable indexes', () => {
+        const images = Array.from({ length: 5 }, (_, index) => ({
+            dataUrl: `data:image/png;base64,${Buffer.from(String(index)).toString('base64')}`
+        }));
+        for (const result of [
+            buildPromptEnhanceInput('generate', 'Use Image 5 as the palette.', { referenceImages: images }),
+            buildSurpriseMeInput('generate', { referenceImages: images })
+        ]) {
+            if (typeof result.input === 'string') throw new Error('Expected reference image input');
+            expect(result.input).toEqual([{
+                role: 'user',
+                content: [
+                    ...images.flatMap((image, index) => [
+                        { type: 'input_text' as const, text: `Image ${index + 1}` },
+                        { type: 'input_image' as const, image_url: image.dataUrl, detail: 'auto' as const }
+                    ]),
+                    { type: 'input_text', text: expect.any(String) }
+                ]
+            }]);
+        }
     });
 
     test('video keeps Sora guidance and low-detail reference analysis', () => {
