@@ -1,11 +1,6 @@
 'use client';
 
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogTitle,
-} from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import { ChevronLeft, ChevronRight, X, Download } from 'lucide-react';
 import Image from 'next/image';
@@ -52,8 +47,13 @@ export function ImageLightbox({ media, open, onOpenChange, initialIndex = 0 }: I
     React.useEffect(() => {
         if (!open) return;
         const handler = (e: KeyboardEvent) => {
-            if (e.key === 'ArrowLeft') { e.preventDefault(); prev(); }
-            else if (e.key === 'ArrowRight') { e.preventDefault(); next(); }
+            if (e.key === 'ArrowLeft') {
+                e.preventDefault();
+                prev();
+            } else if (e.key === 'ArrowRight') {
+                e.preventDefault();
+                next();
+            }
         };
         window.addEventListener('keydown', handler);
         return () => window.removeEventListener('keydown', handler);
@@ -84,16 +84,16 @@ export function ImageLightbox({ media, open, onOpenChange, initialIndex = 0 }: I
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className='max-w-[95vw] max-h-[95vh] w-auto h-auto p-0 border-none bg-black/95 shadow-none flex items-center justify-center outline-none sm:max-w-[95vw] [&>button]:hidden'>
+            <DialogContent
+                showCloseButton={false}
+                className='flex h-auto max-h-[95vh] w-auto max-w-[95vw] items-center justify-center border-none bg-black/95 p-0 shadow-none outline-none sm:max-w-[95vw]'>
                 <DialogTitle className='sr-only'>Full resolution view</DialogTitle>
-                <DialogDescription className='sr-only'>
-                    A full-size preview of the selected image.
-                </DialogDescription>
+                <DialogDescription className='sr-only'>A full-size preview of the selected image.</DialogDescription>
 
                 {/* Close button */}
                 <button
                     onClick={() => onOpenChange(false)}
-                    className='absolute top-4 right-4 z-50 flex h-10 w-10 items-center justify-center rounded-full bg-background/50 text-foreground backdrop-blur-sm transition-colors hover:bg-background/70'
+                    className='bg-background/50 text-foreground hover:bg-background/70 absolute top-4 right-4 z-50 flex h-10 w-10 items-center justify-center rounded-full backdrop-blur-sm transition-colors'
                     aria-label='Close lightbox'>
                     <X className='h-5 w-5' />
                 </button>
@@ -102,7 +102,7 @@ export function ImageLightbox({ media, open, onOpenChange, initialIndex = 0 }: I
                 {!current.isVideo && (
                     <button
                         onClick={handleDownload}
-                        className='absolute top-4 right-16 z-50 flex h-10 w-10 items-center justify-center rounded-full bg-background/50 text-foreground backdrop-blur-sm transition-colors hover:bg-background/70'
+                        className='bg-background/50 text-foreground hover:bg-background/70 absolute top-4 right-16 z-50 flex h-10 w-10 items-center justify-center rounded-full backdrop-blur-sm transition-colors'
                         aria-label='Download image'>
                         <Download className='h-5 w-5' />
                     </button>
@@ -113,13 +113,13 @@ export function ImageLightbox({ media, open, onOpenChange, initialIndex = 0 }: I
                     <>
                         <button
                             onClick={prev}
-                            className='absolute left-4 top-1/2 z-50 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-background/50 text-foreground backdrop-blur-sm transition-colors hover:bg-background/70'
+                            className='bg-background/50 text-foreground hover:bg-background/70 absolute top-1/2 left-4 z-50 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full backdrop-blur-sm transition-colors'
                             aria-label='Previous image'>
                             <ChevronLeft className='h-6 w-6' />
                         </button>
                         <button
                             onClick={next}
-                            className='absolute right-4 top-1/2 z-50 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-background/50 text-foreground backdrop-blur-sm transition-colors hover:bg-background/70'
+                            className='bg-background/50 text-foreground hover:bg-background/70 absolute top-1/2 right-4 z-50 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full backdrop-blur-sm transition-colors'
                             aria-label='Next image'>
                             <ChevronRight className='h-6 w-6' />
                         </button>
@@ -141,7 +141,7 @@ export function ImageLightbox({ media, open, onOpenChange, initialIndex = 0 }: I
                         alt={current.alt || 'Image preview'}
                         width={2048}
                         height={2048}
-                        className='h-auto w-auto max-h-[85vh] max-w-[90vw] object-contain'
+                        className='h-auto max-h-[85vh] w-auto max-w-[90vw] object-contain'
                         style={{ width: 'auto', height: 'auto' }}
                         unoptimized
                     />
@@ -149,7 +149,7 @@ export function ImageLightbox({ media, open, onOpenChange, initialIndex = 0 }: I
 
                 {/* Gallery thumbnails */}
                 {hasGallery && (
-                    <div className='absolute bottom-4 left-1/2 z-50 flex -translate-x-1/2 items-center gap-1.5 rounded-full bg-background/60 p-1.5 backdrop-blur-sm'>
+                    <div className='bg-background/60 absolute bottom-4 left-1/2 z-50 flex -translate-x-1/2 items-center gap-1.5 rounded-full p-1.5 backdrop-blur-sm'>
                         {media.map((item, i) => (
                             <button
                                 key={item.filename || i}
@@ -157,7 +157,7 @@ export function ImageLightbox({ media, open, onOpenChange, initialIndex = 0 }: I
                                 className={cn(
                                     'h-10 w-10 overflow-hidden rounded transition-all',
                                     index === i
-                                        ? 'ring-2 ring-ring ring-offset-1 ring-offset-black'
+                                        ? 'ring-ring ring-2 ring-offset-1 ring-offset-black'
                                         : 'opacity-50 hover:opacity-100'
                                 )}
                                 aria-label={`View image ${i + 1}`}>
@@ -180,7 +180,7 @@ export function ImageLightbox({ media, open, onOpenChange, initialIndex = 0 }: I
 
                 {/* Counter */}
                 {hasGallery && (
-                    <div className='absolute top-4 left-1/2 z-50 -translate-x-1/2 rounded-full bg-background/60 px-3 py-1 text-sm text-foreground backdrop-blur-sm'>
+                    <div className='bg-background/60 text-foreground absolute top-4 left-1/2 z-50 -translate-x-1/2 rounded-full px-3 py-1 text-sm backdrop-blur-sm'>
                         {index + 1} / {media.length}
                     </div>
                 )}

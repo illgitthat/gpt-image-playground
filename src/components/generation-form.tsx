@@ -323,24 +323,38 @@ export function GenerationForm({
                             onValueChange={(value) => setModel(value as GptImageModel)}
                             disabled={isLoading}
                             className='grid grid-cols-2 gap-3'>
-                            <div className='border-border bg-background rounded-md border p-3'>
-                                <RadioItemWithIcon
+                            <Label
+                                htmlFor='model-flare'
+                                className='border-border bg-background has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-primary/5 grid cursor-pointer grid-cols-[auto_1fr] items-center gap-x-2 gap-y-1 rounded-md border p-3'>
+                                <RadioGroupItem
                                     value='gpt-image-2.5-flare'
                                     id='model-flare'
-                                    label='Flare'
-                                    Icon={Sparkles}
+                                    aria-label='Flare'
+                                    aria-describedby='model-flare-description'
                                 />
-                                <p className='text-muted-foreground mt-1 pl-6 text-xs'>Faster generation</p>
-                            </div>
-                            <div className='border-border bg-background rounded-md border p-3'>
-                                <RadioItemWithIcon
+                                <span>Flare</span>
+                                <span
+                                    id='model-flare-description'
+                                    className='text-muted-foreground col-start-2 text-xs font-normal'>
+                                    Faster generation
+                                </span>
+                            </Label>
+                            <Label
+                                htmlFor='model-sunburst'
+                                className='border-border bg-background has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-primary/5 grid cursor-pointer grid-cols-[auto_1fr] items-center gap-x-2 gap-y-1 rounded-md border p-3'>
+                                <RadioGroupItem
                                     value='gpt-image-2.5-sunburst'
                                     id='model-sunburst'
-                                    label='Sunburst'
-                                    Icon={Sparkles}
+                                    aria-label='Sunburst'
+                                    aria-describedby='model-sunburst-description'
                                 />
-                                <p className='text-muted-foreground mt-1 pl-6 text-xs'>Higher quality</p>
-                            </div>
+                                <span>Sunburst</span>
+                                <span
+                                    id='model-sunburst-description'
+                                    className='text-muted-foreground col-start-2 text-xs font-normal'>
+                                    Higher quality
+                                </span>
+                            </Label>
                         </RadioGroup>
                     </div>
                     <div className='space-y-1.5'>
@@ -471,7 +485,7 @@ export function GenerationForm({
                                                     setLightboxIndex(index);
                                                     setLightboxOpen(true);
                                                 }}
-                                                className='focus:ring-ring cursor-zoom-in rounded-md focus:ring-2 focus:ring-offset-1 focus:outline-none'>
+                                                className='focus:ring-ring relative cursor-zoom-in rounded-md focus:ring-2 focus:ring-offset-1 focus:outline-none'>
                                                 <Image
                                                     src={url}
                                                     alt={`Reference ${index + 1}`}
@@ -479,10 +493,17 @@ export function GenerationForm({
                                                     height={64}
                                                     className='border-border h-16 w-16 rounded-md border object-cover'
                                                 />
+                                                <span
+                                                    aria-hidden='true'
+                                                    className='bg-foreground/80 text-background pointer-events-none absolute bottom-1 left-1 rounded px-1 font-mono text-[10px]'>
+                                                    {index + 1}
+                                                </span>
                                             </button>
                                             <button
                                                 type='button'
                                                 onClick={() => handleRemoveRefImage(index)}
+                                                disabled={isLoading}
+                                                aria-label={`Remove reference ${index + 1}`}
                                                 className='border-border bg-background text-muted-foreground hover:bg-destructive hover:text-destructive-foreground absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full border shadow-sm transition-colors'>
                                                 <X className='h-3 w-3' />
                                             </button>
@@ -538,19 +559,23 @@ export function GenerationForm({
                     </div>
 
                     <div className='space-y-2'>
-                        <Label htmlFor='n-slider' className='text-foreground'>
-                            Number of Images: {n[0]}
-                        </Label>
-                        <Slider
-                            id='n-slider'
-                            min={1}
-                            max={MAX_IMAGES}
-                            step={1}
-                            value={n}
-                            onValueChange={setN}
+                        <Label className='text-foreground'>Images</Label>
+                        <RadioGroup
+                            aria-label='Number of images'
+                            value={String(n[0])}
+                            onValueChange={(value) => setN([Number(value)])}
                             disabled={isLoading}
-                            className='[&>button]:border-background [&>button]:bg-primary [&>span:first-child>span]:bg-primary mt-3 [&>button]:ring-offset-black [&>span:first-child]:h-1'
-                        />
+                            className='flex gap-5'>
+                            {Array.from({ length: MAX_IMAGES }, (_, index) => index + 1).map((count) => (
+                                <RadioItemWithIcon
+                                    key={count}
+                                    id={`count-${count}`}
+                                    value={String(count)}
+                                    label={`${count} image${count === 1 ? '' : 's'}`}
+                                    Icon={count === 1 ? Tally1 : Tally2}
+                                />
+                            ))}
+                        </RadioGroup>
                         <p className='text-muted-foreground text-xs'>
                             Up to {IMAGE_REQUESTS_PER_MINUTE} images per minute, per model.
                         </p>

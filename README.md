@@ -9,7 +9,7 @@ A focused web playground for generating images with GPT Image models through the
 ## Features
 
 - **GPT Image 2.5:** Choose Flare (default, speed-focused) or Sunburst (quality-focused). Generate up to 2 images per batch.
-- **Reference-image workflow:** Drop, paste, upload, reuse, or send previous outputs back into the generator as visual references.
+- **Reference-image workflow:** Drop, paste, upload, reuse, or send previous outputs back into the generator as visual references. Numbered thumbnails match `Image 1`, `Image 2`, and so on in prompts.
 - **Streaming progress:** Image requests use an SSE path with keep-alives and optional partial-image previews so long generations do not leave the UI idle.
 - **Prompt tools:** Use `gpt-chat-latest` to enhance prompts or generate a "Surprise me" idea, with optional reference-image context.
 - **Output controls:** Choose count, size (`auto`, square, landscape, portrait), quality, output format (`png`, `jpeg`, `webp`), and compression for JPEG/WebP.
