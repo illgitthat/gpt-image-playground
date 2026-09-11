@@ -206,8 +206,8 @@ for await (const event of response) {
 - Supported deployments: `gpt-image-2.5-flare` (default) and `gpt-image-2.5-sunburst`.
 - Select the gateway deployment through `x-ms-oai-image-generation-deployment` only. Do not set the image tool's `model` field for gateway requests; its validator rejects the new model IDs.
 - `AZURE_OPENAI_DEPLOYMENT_NAME` is no longer used. Older models are not supported.
-- Allow at most 2 images per batch and 2 image requests per minute per model. Do not add automatic retries that spend extra quota.
-- Only the four existing size presets and `auto`/`low`/`medium`/`high` quality are exposed. The gateway rejects custom sizes and extended quality settings.
+- The app currently caps batches at 2 images and requests at 2/minute/model to match the maintainer's personal deployment. This is not a universal model quota. Do not add automatic retries that spend extra quota.
+- Only the four existing size presets and `auto`/`low`/`medium`/`high` quality are exposed. The tested gateway rejected 2K/4K sizes and `xhigh`; these are gateway observations, not universal GPT Image 2.5 limits. The model documentation supports higher settings.
 - Both models support transparency. JPEG cannot preserve alpha.
 - The gateway accepts PNG/JPEG, not WebP. Encode WebP locally from PNG with Sharp.
 - Native output dimensions can differ from the requested preset. Preserve native image data.

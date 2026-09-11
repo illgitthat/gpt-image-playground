@@ -545,7 +545,7 @@ export async function POST(request: NextRequest) {
         if (retryAfter) {
             return NextResponse.json(
                 {
-                    error: `This model allows ${IMAGE_REQUESTS_PER_MINUTE} image requests per minute. Wait ${retryAfter} seconds, or choose the other model.`,
+                    error: `This app limits each model to ${IMAGE_REQUESTS_PER_MINUTE} image requests per minute. Wait ${retryAfter} seconds, or choose the other model.`,
                     retryAfter
                 },
                 { status: 429, headers: { 'Retry-After': String(retryAfter) } }

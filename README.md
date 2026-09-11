@@ -3,7 +3,7 @@
 A focused web playground for generating images with GPT Image models through the OpenAI SDK. It supports OpenAI-compatible Azure gateways, reference images, streaming previews, prompt enhancement, local history, cost estimates, and optional password protection.
 
 <p align="center">
-  <img src="./readme-images/interface.jpg" alt="GPT Image Playground interface" width="900"/>
+  <img src="./readme-images/interface.jpg" alt="GPT Image Playground with Flare selected and a generated image" width="900"/>
 </p>
 
 ## Features
@@ -19,15 +19,15 @@ A focused web playground for generating images with GPT Image models through the
 - **Password protection:** Add `APP_PASSWORD` to require a shared password before API-backed operations.
 
 <p align="center">
-  <img src="./readme-images/references.jpg" alt="Reference image workflow" width="900"/>
+  <img src="./readme-images/references.jpg" alt="Sunburst editing prompt with two numbered reference images" width="650"/>
 </p>
 
 <p align="center">
-  <img src="./readme-images/history.jpg" alt="Generation history" width="900"/>
+  <img src="./readme-images/history.jpg" alt="Generation history showing Flare and Sunburst outputs" width="900"/>
 </p>
 
 <p align="center">
-  <img src="./readme-images/prompt-reuse.jpg" alt="History prompt reuse dialog" width="900"/>
+  <img src="./readme-images/prompt-reuse.jpg" alt="History dialog for reusing a prompt and its references" width="600"/>
 </p>
 
 ## Quick start
@@ -69,22 +69,39 @@ AZURE_OPENAI_ENDPOINT=https://your-gateway.com/openai/v1
 
 The app uses the standard `openai` package, not the Azure SDK. For Azure-compatible endpoints, requests are authenticated with the `api-key` header and image generation is routed through the Responses API `image_generation` tool.
 
-Deploy `gpt-image-2.5-flare` and `gpt-image-2.5-sunburst` at the same endpoint. The selected model is sent in the `x-ms-oai-image-generation-deployment` header. `AZURE_OPENAI_DEPLOYMENT_NAME` is no longer used; remove it from existing configurations. Older image models are not supported.
+Deploy `gpt-image-2.5-flare` and `gpt-image-2.5-sunburst` at the same endpoint. The selected model is sent in the `x-ms-oai-image-generation-deployment` header. `AZURE_OPENAI_DEPLOYMENT_NAME` is no longer used; remove it from existing configurations. There is no fallback to an older image model.
 
-For this gateway, do not also send the model in the image tool: its validator rejects the new IDs even though the deployments work through the header. Standard OpenAI requests use the tool's `model` field.
+This gateway integration selects the deployment through the header only; the tested gateway rejects the new IDs in the image tool's `model` field. Standard OpenAI requests instead set the image tool's `model` field. Gateway behavior is not a model capability or a requirement for all Azure deployments.
 
-### Model limits
+### Deployment quotas and app limits
 
-The app allows 2 image requests per minute, per model, and at most 2 images per batch. Five-image live batches produced rate-limit failures on both deployments. The server reserves each batch against a rolling one-minute window and reports a wait time when the quota is full. It does not retry automatically. Successful images from a partially failed batch are kept.
+**The 2 requests/minute quota belongs to the maintainer's personal deployment, not to GPT Image 2.5 generally.** Provider limits depend on the account and deployment.
 
-The local quota guard applies to one server process. Other clients and server instances share the upstream quota; the gateway remains authoritative. Upstream `429` responses include the wait time when available.
+This version of the app currently caps all backends at **2 images per batch** and **2 image requests per minute, per model**, including standard OpenAI connections. These app-level limits are defined in [`src/lib/image-options.ts`](./src/lib/image-options.ts); they are not discovered from the provider. Higher-quota deployments remain subject to these caps until the app configuration is changed.
 
-The [OpenAI prompting guide](https://developers.openai.com/api/docs/guides/image-prompting) describes additional GPT Image 2.5 settings. Live tests of this gateway confirmed these narrower limits:
+The server reserves each batch against a rolling one-minute window, reports a wait time, and does not retry automatically. Successful images from a partially failed batch are kept. The local guard applies to one server process; other clients and server instances share the upstream quota, and the provider remains authoritative.
 
-- Size: `auto`, `1024x1024`, `1536x1024`, or `1024x1536`. Custom 2K sizes are rejected. Returned pixel dimensions can differ from the requested preset; the app preserves the native output.
-- Quality: `auto`, `low`, `medium`, or `high`. Extended quality settings are not exposed because the gateway rejects them.
-- Background: `auto`, `opaque`, or `transparent`. Transparency requires PNG or WebP.
-- Format: PNG and JPEG are generated directly. WebP is encoded locally from PNG because the gateway rejects direct WebP output. JPEG compression (0-100) is sent to the API; WebP compression (1-100) is applied locally.
+### Resolution and quality
+
+The [OpenAI prompting guide](https://developers.openai.com/api/docs/guides/image-prompting) documents broader model capabilities than this app currently exposes:
+
+| Setting | GPT Image 2.5 model capabilities | Current app controls |
+| --- | --- | --- |
+| Size | `auto` or custom dimensions, including 2K and 4K | `auto`, `1024x1024`, `1536x1024`, `1024x1536` |
+| Quality | `auto`, `low`, `medium`, `high`, `xhigh`, `max` | `auto`, `low`, `medium`, `high` |
+| Background | `auto`, `opaque`, `transparent` | All three; transparency requires PNG or WebP |
+
+Documented custom dimensions must satisfy all of these constraints:
+
+- Each edge is at most **3,840 pixels** and a multiple of **16**.
+- The longer-to-shorter edge ratio is at most **3:1**.
+- Total pixels are between **655,360 and 8,294,400**, inclusive.
+
+Examples include `2048x1152`, `2048x2048`, `3840x2160`, and `2160x3840`. Outputs above **3,686,400 pixels** are experimental, so `2048x2048` and 4K outputs fall into that category.
+
+Rechecked September 11, 2026: the maintainer's Responses gateway rejected both `2048x2048` and `3840x2160` with HTTP 400 for **each** 2.5 deployment, listing only the four presets exposed by the app. Earlier checks also rejected `xhigh`. These are restrictions observed on that gateway route, **not universal model or deployment limits**. The app keeps the narrower controls until higher settings can be supported and verified end to end.
+
+The app preserves returned native image dimensions rather than resizing them to the requested preset. PNG and JPEG are generated directly. WebP is encoded locally from PNG because the tested gateway rejects native WebP output; this does not mean the models lack WebP support. JPEG compression (0-100) is sent to the API; WebP compression (1-100) is applied locally.
 
 See [prompt-guide.md](./prompt-guide.md) for concise prompting and output-review guidance.
 
