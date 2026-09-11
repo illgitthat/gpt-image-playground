@@ -723,7 +723,7 @@ export function GenerationForm({
                         type='submit'
                         disabled={isLoading || isEnhancingPrompt || isSurprising || !prompt.trim()}
                         title={!prompt && !isLoading ? 'Enter a prompt to enable' : undefined}
-                        className='group border-primary/60 bg-primary text-primary-foreground disabled:border-border disabled:text-muted-foreground relative flex w-full items-center justify-center gap-2 rounded-md border py-5 font-mono text-[11px] tracking-[0.22em] uppercase transition-all hover:shadow-[0_8px_30px_-8px_oklch(0.86_0.20_125_/_0.55)] hover:brightness-105 disabled:!pointer-events-auto disabled:cursor-not-allowed disabled:bg-transparent disabled:opacity-100 disabled:shadow-none'>
+                        className='group border-primary/60 bg-primary text-primary-foreground disabled:border-border disabled:text-muted-foreground relative flex min-w-0 flex-1 items-center justify-center gap-2 rounded-md border py-5 font-mono text-[11px] tracking-[0.22em] uppercase transition-all hover:shadow-[0_8px_30px_-8px_oklch(0.86_0.20_125_/_0.55)] hover:brightness-105 disabled:!pointer-events-auto disabled:cursor-not-allowed disabled:bg-transparent disabled:opacity-100 disabled:shadow-none'>
                         {isLoading && <Loader2 className='h-4 w-4 animate-spin' />}
                         <span>{isLoading ? 'Generating…' : !prompt ? 'Enter a prompt …' : 'Generate →'}</span>
                     </Button>
