@@ -29,7 +29,8 @@ import {
     Upload,
     X,
     ClipboardPaste,
-    ImagePlus
+    ImagePlus,
+    Undo2
 } from 'lucide-react';
 import Image from 'next/image';
 import * as React from 'react';
@@ -80,6 +81,10 @@ type GenerationFormProps = {
     enhanceError: string | null;
     onSurpriseMe: () => void;
     isSurprising: boolean;
+    canUndoPrompt: boolean;
+    onUndoPrompt: () => void;
+    onCancel: () => void;
+    isCancelling: boolean;
 };
 
 const RadioItemWithIcon = ({
@@ -143,7 +148,11 @@ export function GenerationForm({
     isEnhancingPrompt,
     enhanceError,
     onSurpriseMe,
-    isSurprising
+    isSurprising,
+    canUndoPrompt,
+    onUndoPrompt,
+    onCancel,
+    isCancelling
 }: GenerationFormProps) {
     const showCompression = outputFormat === 'jpeg' || outputFormat === 'webp';
     const [imageAddError, setImageAddError] = React.useState<string | null>(null);
@@ -153,6 +162,15 @@ export function GenerationForm({
     const refImageInputRef = React.useRef<HTMLInputElement>(null);
     const [lightboxOpen, setLightboxOpen] = React.useState(false);
     const [lightboxIndex, setLightboxIndex] = React.useState(0);
+    const generateButtonRef = React.useRef<HTMLButtonElement>(null);
+    const cancelledByUser = React.useRef(false);
+
+    React.useEffect(() => {
+        if (!isLoading && cancelledByUser.current) {
+            generateButtonRef.current?.focus();
+            cancelledByUser.current = false;
+        }
+    }, [isLoading]);
 
     React.useEffect(() => {
         if (outputFormat === 'webp' && compression[0] === 0) setCompression([1]);
@@ -358,7 +376,7 @@ export function GenerationForm({
                         </RadioGroup>
                     </div>
                     <div className='space-y-1.5'>
-                        <div className='flex items-center justify-between gap-2'>
+                        <div className='flex flex-wrap items-center justify-between gap-2'>
                             <Label htmlFor='prompt' className='text-foreground'>
                                 Prompt
                             </Label>
@@ -379,6 +397,23 @@ export function GenerationForm({
                                     </Button>
                                 )}
                                 {enhanceError && <span className='text-destructive text-xs'>{enhanceError}</span>}
+                                {canUndoPrompt && (
+                                    <Tooltip>
+                                        <TooltipTrigger asChild>
+                                            <Button
+                                                type='button'
+                                                variant='ghost'
+                                                size='icon'
+                                                className='h-8 w-8'
+                                                onClick={onUndoPrompt}
+                                                disabled={isLoading || isEnhancingPrompt || isSurprising}
+                                                aria-label='Undo prompt change'>
+                                                <Undo2 className='h-4 w-4' />
+                                            </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent>Undo prompt change</TooltipContent>
+                                    </Tooltip>
+                                )}
                                 <Tooltip>
                                     <TooltipTrigger asChild>
                                         <Button
@@ -407,7 +442,7 @@ export function GenerationForm({
                                             variant='ghost'
                                             size='sm'
                                             onClick={onEnhancePrompt}
-                                            disabled={isLoading || isEnhancingPrompt || !prompt.trim()}
+                                            disabled={isLoading || isEnhancingPrompt || isSurprising || !prompt.trim()}
                                             className='border-border bg-muted/30 text-foreground/90 hover:bg-muted/80 hover:text-foreground h-8 gap-1 rounded-full border px-3 text-xs'>
                                             {isEnhancingPrompt ? (
                                                 <Loader2 className='h-4 w-4 animate-spin' />
@@ -682,8 +717,9 @@ export function GenerationForm({
                         </div>
                     )}
                 </CardContent>
-                <CardFooter className='border-border bg-muted/20 border-t p-4'>
+                <CardFooter className='border-border bg-muted/20 gap-2 border-t p-4'>
                     <Button
+                        ref={generateButtonRef}
                         type='submit'
                         disabled={isLoading || isEnhancingPrompt || isSurprising || !prompt.trim()}
                         title={!prompt && !isLoading ? 'Enter a prompt to enable' : undefined}
@@ -691,6 +727,26 @@ export function GenerationForm({
                         {isLoading && <Loader2 className='h-4 w-4 animate-spin' />}
                         <span>{isLoading ? 'Generating…' : !prompt ? 'Enter a prompt …' : 'Generate →'}</span>
                     </Button>
+                    {isLoading && (
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Button
+                                    type='button'
+                                    variant='outline'
+                                    size='icon'
+                                    className='h-10 w-10 shrink-0'
+                                    onClick={() => {
+                                        cancelledByUser.current = true;
+                                        onCancel();
+                                    }}
+                                    disabled={isCancelling}
+                                    aria-label='Cancel generation'>
+                                    <Square className='h-4 w-4 fill-current' />
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Cancel generation</TooltipContent>
+                        </Tooltip>
+                    )}
                 </CardFooter>
             </form>
             <ImageLightbox

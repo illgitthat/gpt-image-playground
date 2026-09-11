@@ -17,12 +17,32 @@ const png = (
         .toBuffer()
 ).toString('base64');
 let requests: UpstreamRequest[] = [];
-let outcome: 'success' | 'partial-failure' | 'quota' | 'stream-failure' | 'no-image' = 'success';
+let outcome: 'success' | 'partial-failure' | 'quota' | 'stream-failure' | 'no-image' | 'hanging' = 'success';
+let onUpstreamAbort: (() => void) | undefined;
 const upstream = Bun.serve({
     port: 0,
     async fetch(request) {
         const body: UpstreamRequest['body'] = await request.json();
         requests.push({ deployment: request.headers.get('x-ms-oai-image-generation-deployment'), body });
+        if (outcome === 'hanging') {
+            request.signal.addEventListener('abort', () => onUpstreamAbort?.(), { once: true });
+            return new Response(
+                new ReadableStream({
+                    start(controller) {
+                        controller.enqueue(
+                            new TextEncoder().encode(
+                                `data: ${JSON.stringify({
+                                    type: 'response.image_generation_call.partial_image',
+                                    partial_image_b64: png,
+                                    partial_image_index: 0
+                                })}\n\n`
+                            )
+                        );
+                    }
+                }),
+                { headers: { 'Content-Type': 'text/event-stream' } }
+            );
+        }
         if (outcome === 'quota' || (outcome === 'partial-failure' && requests.length === 2)) {
             return Response.json(
                 { error: { message: 'Model limit', type: 'rate_limit_error' } },
@@ -68,6 +88,7 @@ const clock = spyOn(Date, 'now').mockImplementation(() => now);
 beforeEach(() => {
     requests = [];
     outcome = 'success';
+    onUpstreamAbort = undefined;
     now += 120_000;
 });
 afterAll(() => {
@@ -77,12 +98,12 @@ afterAll(() => {
     Object.assign(process.env, savedEnv);
 });
 
-function send(values: Record<string, string> = {}, references: File[] = []) {
+function send(values: Record<string, string> = {}, references: File[] = [], signal?: AbortSignal) {
     const body = new FormData();
     body.set('prompt', 'Change only the leaf color. Keep everything else the same.');
     for (const [key, value] of Object.entries(values)) body.set(key, value);
     references.forEach((reference, i) => body.set(`image_${i}`, reference));
-    return POST(new NextRequest('http://localhost/api/images', { method: 'POST', body }));
+    return POST(new NextRequest('http://localhost/api/images', { method: 'POST', body, signal }));
 }
 
 async function events(response: Response) {
@@ -112,6 +133,9 @@ describe('image route', () => {
         const result = await events(await send({ n: '2', stream: 'true', partial_images: '1' }));
         expect(result.filter((event) => event.type === 'partial_image')).toHaveLength(2);
         expect(result.filter((event) => event.type === 'completed')).toHaveLength(2);
+        expect(result.filter((event) => event.type === 'completed').every((event) => event.b64_json === png)).toBe(
+            true
+        );
         expect(result.at(-1).images).toHaveLength(2);
         const limited = await send();
         expect(limited.status).toBe(429);
@@ -183,5 +207,21 @@ describe('image route', () => {
         } finally {
             delete process.env.APP_PASSWORD;
         }
+    });
+
+    test.each(['request-abort', 'reader-cancel'])('cancels the upstream generation on %s', async (mode) => {
+        outcome = 'hanging';
+        const aborted = Promise.withResolvers<void>();
+        onUpstreamAbort = aborted.resolve;
+        const controller = new AbortController();
+        const response = await send({ stream: 'true', partial_images: '1' }, [], controller.signal);
+        const reader = response.body!.getReader();
+        const first = await reader.read();
+        expect(new TextDecoder().decode(first.value)).toContain('partial_image');
+        if (mode === 'request-abort') controller.abort();
+        else await reader.cancel();
+        await aborted.promise;
+        reader.releaseLock();
+        expect(requests).toHaveLength(1);
     });
 });

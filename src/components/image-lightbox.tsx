@@ -1,6 +1,7 @@
 'use client';
 
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
+import { downloadImage } from '@/lib/image-download';
 import { cn } from '@/lib/utils';
 import { ChevronLeft, ChevronRight, X, Download } from 'lucide-react';
 import Image from 'next/image';
@@ -22,6 +23,10 @@ type ImageLightboxProps = {
 
 export function ImageLightbox({ media, open, onOpenChange, initialIndex = 0 }: ImageLightboxProps) {
     const [index, setIndex] = React.useState(initialIndex);
+    const [downloadError, setDownloadError] = React.useState<{ url: string; message: string } | null>(null);
+    const [isDownloading, setIsDownloading] = React.useState(false);
+
+    React.useEffect(() => setDownloadError(null), [index, open]);
 
     // Sync index when initialIndex or open state changes
     React.useEffect(() => {
@@ -65,20 +70,19 @@ export function ImageLightbox({ media, open, onOpenChange, initialIndex = 0 }: I
     const hasGallery = media.length > 1;
 
     const handleDownload = async () => {
-        if (!current) return;
+        if (!current || isDownloading) return;
+        setDownloadError(null);
+        setIsDownloading(true);
         try {
-            const response = await fetch(current.url);
-            const blob = await response.blob();
-            const blobUrl = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = blobUrl;
-            a.download = current.filename || 'image';
-            document.body.appendChild(a);
-            a.click();
-            window.URL.revokeObjectURL(blobUrl);
-            document.body.removeChild(a);
+            await downloadImage(current.url, current.filename || 'image');
         } catch (err) {
             console.error('Download failed:', err);
+            setDownloadError({
+                url: current.url,
+                message: err instanceof Error ? err.message : 'Download failed. Try again.'
+            });
+        } finally {
+            setIsDownloading(false);
         }
     };
 
@@ -89,6 +93,13 @@ export function ImageLightbox({ media, open, onOpenChange, initialIndex = 0 }: I
                 className='flex h-auto max-h-[95vh] w-auto max-w-[95vw] items-center justify-center border-none bg-black/95 p-0 shadow-none outline-none sm:max-w-[95vw]'>
                 <DialogTitle className='sr-only'>Full resolution view</DialogTitle>
                 <DialogDescription className='sr-only'>A full-size preview of the selected image.</DialogDescription>
+                {downloadError?.url === current.url && (
+                    <p
+                        role='alert'
+                        className='bg-background text-destructive absolute inset-x-4 top-16 z-50 rounded-md border p-3 text-sm'>
+                        {downloadError.message}
+                    </p>
+                )}
 
                 {/* Close button */}
                 <button
@@ -102,6 +113,7 @@ export function ImageLightbox({ media, open, onOpenChange, initialIndex = 0 }: I
                 {!current.isVideo && (
                     <button
                         onClick={handleDownload}
+                        disabled={isDownloading}
                         className='bg-background/50 text-foreground hover:bg-background/70 absolute top-4 right-16 z-50 flex h-10 w-10 items-center justify-center rounded-full backdrop-blur-sm transition-colors'
                         aria-label='Download image'>
                         <Download className='h-5 w-5' />

@@ -2,6 +2,7 @@
 
 import { ImageLightbox, type LightboxMedia } from '@/components/image-lightbox';
 import { Button } from '@/components/ui/button';
+import { downloadImage } from '@/lib/image-download';
 import { cn } from '@/lib/utils';
 import { Loader2, Send, Grid, Download, Maximize2, ImagePlus } from 'lucide-react';
 import Image from 'next/image';
@@ -18,11 +19,12 @@ type ImageOutputProps = {
     onViewChange: (view: 'grid' | number) => void;
     altText?: string;
     isLoading: boolean;
+    isPreparing?: boolean;
+    completedCount?: number;
     onSendToEdit: (filename: string) => void;
     baseImagePreviewUrl: string | null;
     streamingPreviewImages?: Map<number, string>;
     onSendToVideo?: (filename: string) => void;
-    loadingQuality?: 'low' | 'medium' | 'high' | 'auto';
     loadingCount?: number;
 };
 
@@ -32,63 +34,7 @@ function formatElapsed(seconds: number): string {
     return m > 0 ? `${m}:${s.toString().padStart(2, '0')}` : `${s}s`;
 }
 
-const GENERATION_TIPS = [
-    'Higher quality settings produce more detailed results but take longer',
-    'Use "Enhance prompt" to clarify the result you want',
-    'Give each reference a role: subject, style, or background',
-    'Quote the exact text you want in the image',
-    'Use PNG or WebP for transparent backgrounds',
-    'For edits, state what to change and what to preserve',
-    'Refine one change at a time and check the result'
-];
-
-const PHASE_MESSAGES: [number, string][] = [
-    [0, 'Interpreting prompt…'],
-    [5, 'Setting up generation…'],
-    [15, 'Composing image…'],
-    [40, 'Rendering details…'],
-    [80, 'Refining output…'],
-    [150, 'Finalizing — hang tight…'],
-    [240, 'Still working — complex images take time…']
-];
-
-function getPhaseMessage(elapsed: number): string {
-    let msg = PHASE_MESSAGES[0][1];
-    for (const [threshold, message] of PHASE_MESSAGES) {
-        if (elapsed >= threshold) msg = message;
-    }
-    return msg;
-}
-
-function getEstimatedDuration(quality?: string, count?: number): number {
-    let base = 60;
-    if (quality === 'high') base = 120;
-    else if (quality === 'low') base = 30;
-    else if (quality === 'medium') base = 60;
-    const multiplier = count && count > 1 ? 1 + 0.5 * (count - 1) : 1;
-    return base * multiplier;
-}
-
-function getEstimatedProgress(elapsed: number, estimatedDuration: number): number {
-    // Asymptotic approach: fast initially, slows near end. Never reaches 100%.
-    const ratio = elapsed / estimatedDuration;
-    return Math.min(1 - Math.exp(-2 * ratio), 0.92);
-}
-
-function GenerationLoader({
-    elapsedSeconds,
-    quality,
-    count
-}: {
-    elapsedSeconds: number;
-    quality?: string;
-    count?: number;
-}) {
-    const phaseMessage = getPhaseMessage(elapsedSeconds);
-    const tipIndex = Math.floor(elapsedSeconds / 10) % GENERATION_TIPS.length;
-    const estimatedDuration = getEstimatedDuration(quality, count);
-    const progress = getEstimatedProgress(elapsedSeconds, estimatedDuration);
-
+function GenerationLoader({ elapsedSeconds, status }: { elapsedSeconds: number; status: string }) {
     return (
         <div className='flex flex-col items-center justify-center gap-4'>
             {/* Elapsed time with spinner */}
@@ -99,22 +45,8 @@ function GenerationLoader({
                 </span>
             </div>
 
-            {/* Phase message */}
-            <p className='text-foreground/90 text-sm font-medium'>{phaseMessage}</p>
-
-            {/* Progress bar */}
-            <div className='bg-border h-1 w-44 overflow-hidden rounded-full'>
-                <div
-                    className='generation-progress-fill bg-primary/50 h-full rounded-full transition-[width] duration-1000 ease-out'
-                    style={{ width: `${progress * 100}%` }}
-                />
-            </div>
-
-            {/* Rotating tip */}
-            <p
-                key={tipIndex}
-                className='rise-in text-muted-foreground/60 max-w-[260px] text-center text-[11px] leading-relaxed'>
-                {GENERATION_TIPS[tipIndex]}
+            <p role='status' className='text-foreground/90 text-sm font-medium'>
+                {status}
             </p>
         </div>
     );
@@ -136,13 +68,22 @@ export function ImageOutput({
     onViewChange,
     altText = 'Generated image output',
     isLoading,
+    isPreparing = false,
+    completedCount = 0,
     onSendToEdit,
     baseImagePreviewUrl,
     streamingPreviewImages,
     onSendToVideo,
-    loadingQuality,
     loadingCount
 }: ImageOutputProps) {
+    const status = isPreparing
+        ? 'Loading reference…'
+        : completedCount > 0
+          ? `${completedCount}/${loadingCount ?? 1} complete`
+          : 'Generating…';
+    const [downloadError, setDownloadError] = React.useState<{ path: string; message: string } | null>(null);
+    const [isDownloading, setIsDownloading] = React.useState(false);
+    React.useEffect(() => setDownloadError(null), [imageBatch, viewMode]);
     const handleSendClick = () => {
         // Send to edit only works when a single image is selected
         if (typeof viewMode === 'number' && imageBatch && imageBatch[viewMode]) {
@@ -157,31 +98,30 @@ export function ImageOutput({
     };
 
     const handleDownload = async () => {
-        if (typeof viewMode === 'number' && imageBatch && imageBatch[viewMode]) {
+        if (!isDownloading && typeof viewMode === 'number' && imageBatch && imageBatch[viewMode]) {
             const img = imageBatch[viewMode];
+            setDownloadError(null);
+            setIsDownloading(true);
             try {
-                const response = await fetch(img.path);
-                const blob = await response.blob();
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = img.filename; // Use the filename from the image info
-                document.body.appendChild(a);
-                a.click();
-                window.URL.revokeObjectURL(url);
-                document.body.removeChild(a);
+                await downloadImage(img.path, img.filename);
             } catch (error) {
                 console.error('Download failed:', error);
+                setDownloadError({
+                    path: img.path,
+                    message: error instanceof Error ? error.message : 'Download failed. Try again.'
+                });
+            } finally {
+                setIsDownloading(false);
             }
         }
     };
 
     const showCarousel = imageBatch && imageBatch.length > 1;
     const isSingleImageView = typeof viewMode === 'number';
-    const canSendToEdit = !isLoading && isSingleImageView && imageBatch && imageBatch[viewMode];
+    const canSendToEdit = !isLoading && !isPreparing && isSingleImageView && imageBatch && imageBatch[viewMode];
     const canSendToVideo =
-        !isLoading && isSingleImageView && imageBatch && imageBatch[viewMode] && Boolean(onSendToVideo);
-    const canDownload = !isLoading && isSingleImageView && imageBatch && imageBatch[viewMode];
+        !isLoading && !isPreparing && isSingleImageView && imageBatch && imageBatch[viewMode] && Boolean(onSendToVideo);
+    const canDownload = !isLoading && !isPreparing && isSingleImageView && imageBatch && imageBatch[viewMode];
 
     const [lightboxOpen, setLightboxOpen] = React.useState(false);
 
@@ -192,7 +132,8 @@ export function ImageOutput({
             setElapsedSeconds(0);
             return;
         }
-        const interval = setInterval(() => setElapsedSeconds((s) => s + 1), 1000);
+        const startedAt = Date.now();
+        const interval = setInterval(() => setElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000)), 1000);
         return () => clearInterval(interval);
     }, [isLoading]);
 
@@ -213,7 +154,7 @@ export function ImageOutput({
                     : ''}
             </div>
             <div className='relative flex h-full w-full flex-grow items-center justify-center overflow-hidden'>
-                {isLoading ? (
+                {isLoading || isPreparing ? (
                     streamingPreviewImages && streamingPreviewImages.size > 0 ? (
                         // Show streaming preview images
                         streamingPreviewImages.size === 1 ? (
@@ -228,7 +169,7 @@ export function ImageOutput({
                                         <div className='relative'>
                                             <Image
                                                 src={dataUrl}
-                                                alt='Streaming preview — still refining'
+                                                alt='Image preview'
                                                 width={512}
                                                 height={512}
                                                 className='h-auto max-h-full w-auto max-w-full object-contain'
@@ -240,8 +181,8 @@ export function ImageOutput({
                                             {/* Status pill anchored to image bottom */}
                                             <div className='bg-background/80 absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full px-3 py-1.5 shadow-sm backdrop-blur-sm'>
                                                 <Loader2 className='text-primary h-3.5 w-3.5 animate-spin' />
-                                                <p className='text-foreground/90 text-xs font-medium'>
-                                                    Refining — not the final image
+                                                <p role='status' className='text-foreground/90 text-xs font-medium'>
+                                                    {status}
                                                 </p>
                                                 <span className='text-muted-foreground font-mono text-[10px] tabular-nums'>
                                                     {formatElapsed(elapsedSeconds)}
@@ -265,7 +206,7 @@ export function ImageOutput({
                                                 {preview ? (
                                                     <Image
                                                         src={preview}
-                                                        alt={`Streaming preview ${i + 1} — still refining`}
+                                                        alt={`Image ${i + 1} preview`}
                                                         fill
                                                         style={{ objectFit: 'contain' }}
                                                         unoptimized
@@ -281,8 +222,8 @@ export function ImageOutput({
                                 </div>
                                 <div className='bg-background/80 flex items-center gap-2 rounded-full px-3 py-1.5 shadow-sm backdrop-blur-sm'>
                                     <Loader2 className='text-primary h-3.5 w-3.5 animate-spin' />
-                                    <p className='text-foreground/90 text-xs font-medium'>
-                                        Refining — not final results
+                                    <p role='status' className='text-foreground/90 text-xs font-medium'>
+                                        {status}
                                     </p>
                                     <span className='text-muted-foreground font-mono text-[10px] tabular-nums'>
                                         {formatElapsed(elapsedSeconds)}
@@ -301,19 +242,11 @@ export function ImageOutput({
                                 unoptimized
                             />
                             <div className='bg-background/50 absolute inset-0 flex items-center justify-center'>
-                                <GenerationLoader
-                                    elapsedSeconds={elapsedSeconds}
-                                    quality={loadingQuality}
-                                    count={loadingCount}
-                                />
+                                <GenerationLoader elapsedSeconds={elapsedSeconds} status={status} />
                             </div>
                         </div>
                     ) : (
-                        <GenerationLoader
-                            elapsedSeconds={elapsedSeconds}
-                            quality={loadingQuality}
-                            count={loadingCount}
-                        />
+                        <GenerationLoader elapsedSeconds={elapsedSeconds} status={status} />
                     )
                 ) : imageBatch && imageBatch.length > 0 ? (
                     viewMode === 'grid' ? (
@@ -377,6 +310,11 @@ export function ImageOutput({
                 )}
             </div>
 
+            {downloadError && typeof viewMode === 'number' && imageBatch?.[viewMode]?.path === downloadError.path && (
+                <p role='alert' className='text-destructive text-sm'>
+                    {downloadError.message}
+                </p>
+            )}
             <div className='flex h-10 w-full shrink-0 items-center justify-center gap-4'>
                 {showCarousel && (
                     <div className='border-border bg-muted/50 flex items-center gap-1.5 rounded-md border p-1'>
@@ -424,7 +362,7 @@ export function ImageOutput({
                         variant='outline'
                         size='sm'
                         onClick={handleDownload}
-                        disabled={!canDownload}
+                        disabled={!canDownload || isDownloading}
                         className={cn(
                             'border-border text-foreground/90 hover:bg-muted/60 hover:text-foreground shrink-0 disabled:pointer-events-none disabled:opacity-50',
                             showCarousel && viewMode === 'grid' ? 'invisible' : 'visible'

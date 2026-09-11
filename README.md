@@ -10,8 +10,8 @@ A focused web playground for generating images with GPT Image models through the
 
 - **GPT Image 2.5:** Choose Flare (default, speed-focused) or Sunburst (quality-focused). Generate up to 2 images per batch.
 - **Reference-image workflow:** Drop, paste, upload, reuse, or send previous outputs back into the generator as visual references. Numbered thumbnails match `Image 1`, `Image 2`, and so on in prompts.
-- **Streaming progress:** Image requests use an SSE path with keep-alives and optional partial-image previews so long generations do not leave the UI idle.
-- **Prompt tools:** Use `gpt-chat-latest` to enhance prompts or generate a "Surprise me" idea, with optional reference-image context.
+- **Streaming progress:** Show elapsed time, previews, and actual completion counts without estimating a percentage or finish time. Cancel stops the pending request and keeps completed images already received; unfinished previews are not saved.
+- **Prompt tools:** Use `gpt-chat-latest` to enhance prompts or generate a "Surprise me" idea, with optional reference-image context. Later typing is never replaced by a delayed reply. Undo restores the previous prompt until you edit it again.
 - **Output controls:** Choose count, size (`auto`, square, landscape, portrait), quality, output format (`png`, `jpeg`, `webp`), and compression for JPEG/WebP.
 - **History and reuse:** Browse generated batches, open images in a lightbox, download selected images, reuse prompts, reuse prompts with references, and delete entries.
 - **Cost estimates:** Estimate image cost only when the API provides image-token usage. Text-orchestrator usage is not an image-cost estimate.
@@ -136,6 +136,10 @@ Useful scripts:
 | `bun run format` | Format source files with Prettier. |
 
 Dependencies use current stable releases where compatible. ESLint stays on 9.x because the React lint plugin does not support ESLint 10; TypeScript stays on 6.0.x because typescript-eslint does not support TypeScript 7.
+
+Pull requests and pushes to `main` run a frozen dependency install, both type checks, lint, offline behavior tests, and a production build in GitHub Actions. No API credentials or paid model requests are used in CI.
+
+Cancellation is best-effort upstream: it does not guarantee a quota refund or prevent billing for work already started.
 
 ## Production with systemd
 

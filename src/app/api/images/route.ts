@@ -651,8 +651,7 @@ export async function POST(request: NextRequest) {
                                                 sseEvent({
                                                     type: 'completed',
                                                     index: result.index,
-                                                    filename: result.savedImage.filename,
-                                                    output_format: result.savedImage.output_format
+                                                    ...result.savedImage
                                                 })
                                             )
                                         );
@@ -721,8 +720,7 @@ export async function POST(request: NextRequest) {
                                                 sseEvent({
                                                     type: 'completed',
                                                     index: result.index,
-                                                    filename: result.savedImage.filename,
-                                                    output_format: result.savedImage.output_format
+                                                    ...result.savedImage
                                                 })
                                             )
                                         );
