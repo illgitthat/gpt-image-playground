@@ -25,7 +25,7 @@ describe('image streaming', () => {
             event({ type: 'completed', index: 0, ...image }) +
             event({ type: 'completed', index: 0, ...image }) +
             event({ type: 'partial_image', index: 0, b64_json: 'late-preview' }) +
-            event({ type: 'done', images: [image] });
+            event({ type: 'done', completed_count: 1 });
         const counts: number[] = [];
         const previews: string[] = [];
         const result = await readImageStream(
@@ -110,7 +110,10 @@ describe('image streaming', () => {
 
     test.each([
         'data: not-json\n\n',
-        event({ type: 'done', images: [{ filename: 'not-an-image' }] }),
+        event({ type: 'done' }),
+        event({ type: 'done', completed_count: 0 }),
+        event({ type: 'done', completed_count: '1' }),
+        event({ type: 'done', completed_count: 1.5 }),
         event({ type: 'error', error: 'Upstream unavailable' })
     ])('surfaces invalid or failed streams: %s', async (frame) => {
         const result = await readImageStream(
@@ -126,12 +129,61 @@ describe('image streaming', () => {
 
     test('keeps a partial-failure message from the final batch', async () => {
         const result = await readImageStream(
-            stream([event({ type: 'done', images: [image], error: 'Second image failed' })]),
+            stream([
+                event({ type: 'completed', index: 1, ...image }),
+                event({ type: 'done', completed_count: 1, error: 'First image failed' })
+            ]),
             new AbortController().signal,
             () => {},
             () => {}
         );
-        expect(result.error).toBe('Second image failed');
+        expect(result.error).toBe('First image failed');
         expect(result.images).toEqual([image]);
+    });
+
+    test('assembles out-of-order completions in request order and retains terminal usage', async () => {
+        const second = { ...image, filename: 'second.png' };
+        const usage = { input_tokens_details: { text_tokens: 1000, image_tokens: 1000 }, output_tokens: 1000 };
+        const result = await readImageStream(
+            stream([
+                event({ type: 'completed', index: 1, ...second }),
+                event({ type: 'completed', index: 0, ...image }),
+                event({ type: 'done', completed_count: 2, usage })
+            ]),
+            new AbortController().signal,
+            () => {},
+            () => {}
+        );
+        expect(result.images).toEqual([image, second]);
+        expect(result.usage).toEqual(usage);
+        expect(result.error).toBeUndefined();
+    });
+
+    test.each([1, 3])('detects a completion-count mismatch (%s) without losing received images', async (count) => {
+        const second = { ...image, filename: 'second.png' };
+        const result = await readImageStream(
+            stream([
+                event({ type: 'completed', index: 0, ...image }),
+                event({ type: 'completed', index: 1, ...second }),
+                event({ type: 'done', completed_count: count })
+            ]),
+            new AbortController().signal,
+            () => {},
+            () => {}
+        );
+        expect(result.images).toEqual([image, second]);
+        expect(result.error).toContain('missing or unexpected images');
+        expect(result.cancelled).toBe(false);
+    });
+
+    test('rejects a terminal event when no completed image arrived', async () => {
+        const result = await readImageStream(
+            stream([event({ type: 'done', completed_count: 1 })]),
+            new AbortController().signal,
+            () => {},
+            () => {}
+        );
+        expect(result.images).toHaveLength(0);
+        expect(result.error).toContain('missing or unexpected images');
     });
 });

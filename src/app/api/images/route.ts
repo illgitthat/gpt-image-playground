@@ -16,7 +16,7 @@ type StreamingEvent = {
     path?: string;
     output_format?: string;
     usage?: ApiUsage;
-    images?: SavedImageData[];
+    completed_count?: number;
     failures?: GenerationFailure[];
     error?: string;
 };
@@ -614,8 +614,6 @@ export async function POST(request: NextRequest) {
                     clientAbort.addEventListener('abort', onClientAbort, { once: true });
 
                     try {
-                        let generationResults: GeneratedImageResult[];
-
                         if (usePartialImageStreaming) {
                             const generationTasks = Array.from({ length: maxImages }, (_, index) =>
                                 generateSingleImageWithPartialStreaming({
@@ -662,7 +660,6 @@ export async function POST(request: NextRequest) {
 
                             const settledBatch = await settleGenerationTasks(generationTasks);
                             recordQuotaFailures(settledBatch);
-                            generationResults = settledBatch.results;
 
                             if (closed) {
                                 return;
@@ -691,7 +688,7 @@ export async function POST(request: NextRequest) {
                                 encoder.encode(
                                     sseEvent({
                                         type: 'done',
-                                        images: savedImagesData,
+                                        completed_count: savedImagesData.length,
                                         usage: settledBatch.usage,
                                         ...(failureMessage
                                             ? { error: failureMessage, failures: settledBatch.failures }
@@ -731,7 +728,6 @@ export async function POST(request: NextRequest) {
 
                             const settledBatch = await settleGenerationTasks(generationTasks);
                             recordQuotaFailures(settledBatch);
-                            generationResults = settledBatch.results;
 
                             if (closed) {
                                 return;
@@ -760,7 +756,7 @@ export async function POST(request: NextRequest) {
                                 encoder.encode(
                                     sseEvent({
                                         type: 'done',
-                                        images: savedImagesData,
+                                        completed_count: savedImagesData.length,
                                         usage: settledBatch.usage,
                                         ...(failureMessage
                                             ? { error: failureMessage, failures: settledBatch.failures }

@@ -36,6 +36,8 @@ export async function readImageStream(
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     const completed = new Map<number, GeneratedImage>();
+    const completedImages = () =>
+        [...completed.entries()].sort(([left], [right]) => left - right).map(([, image]) => image);
     let buffer = '';
     let finalBatch: ImageBatch | undefined;
     let error: string | undefined;
@@ -62,15 +64,18 @@ export async function readImageStream(
         }
         if (event.type === 'done') {
             if (
-                !('images' in event) ||
-                !Array.isArray(event.images) ||
-                !event.images.length ||
-                !event.images.every(isGeneratedImage)
+                !('completed_count' in event) ||
+                typeof event.completed_count !== 'number' ||
+                !Number.isInteger(event.completed_count) ||
+                event.completed_count < 1
             ) {
-                throw new Error('Image generation completed without valid images.');
+                throw new Error('Image stream has an invalid completion count.');
+            }
+            if (event.completed_count !== completed.size) {
+                throw new Error('Image stream completed with missing or unexpected images.');
             }
             finalBatch = {
-                images: event.images,
+                images: completedImages(),
                 usage: 'usage' in event ? event.usage : undefined,
                 error: 'error' in event && typeof event.error === 'string' ? event.error : undefined,
                 cancelled: false
@@ -92,8 +97,14 @@ export async function readImageStream(
             if (!completed.has(event.index)) onPreview(event.index, event.b64_json);
         } else if (event.type === 'completed') {
             if (!isGeneratedImage(event)) throw new Error('Invalid completed image in stream.');
-            completed.set(event.index, event);
-            onCompleted(event.index, event, completed.size);
+            const image: GeneratedImage = {
+                filename: event.filename,
+                output_format: event.output_format,
+                ...(typeof event.b64_json === 'string' ? { b64_json: event.b64_json } : {}),
+                ...(typeof event.path === 'string' ? { path: event.path } : {})
+            };
+            completed.set(event.index, image);
+            onCompleted(event.index, image, completed.size);
         }
     };
 
@@ -130,7 +141,7 @@ export async function readImageStream(
     }
     return (
         finalBatch ?? {
-            images: [...completed.entries()].sort(([left], [right]) => left - right).map(([, image]) => image),
+            images: completedImages(),
             error,
             cancelled: signal.aborted
         }

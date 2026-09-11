@@ -1,4 +1,3 @@
-import { calculateApiCost } from '../src/lib/cost-utils';
 import { parseImageOptions } from '../src/lib/image-options';
 import { createImageQuota } from '../src/lib/image-quota';
 import { describe, expect, test } from 'bun:test';
@@ -90,29 +89,5 @@ describe('per-model quota', () => {
         quota.reserve('gpt-image-2.5-flare', 1, 20_000);
         expect(quota.reserve('gpt-image-2.5-flare', 2, 30_000)).toBe(50);
         expect(quota.reserve('gpt-image-2.5-flare', 1, 60_000)).toBe(0);
-    });
-});
-
-describe('image cost estimates', () => {
-    test('does not charge text orchestration tokens at image output rates', () => {
-        expect(calculateApiCost({ output_tokens: 100, input_tokens_details: { cached_tokens: 0 } })).toBeNull();
-    });
-
-    test('uses current rates only with an image token breakdown', () => {
-        expect(
-            calculateApiCost({
-                input_tokens_details: { text_tokens: 1000, image_tokens: 1000 },
-                output_tokens: 1000
-            })?.estimated_cost_usd
-        ).toBe(0.043);
-    });
-
-    test('does not guess the cached-token modality', () => {
-        expect(
-            calculateApiCost({
-                input_tokens_details: { text_tokens: 1000, image_tokens: 1000, cached_tokens: 100 },
-                output_tokens: 1000
-            })
-        ).toBeNull();
     });
 });

@@ -1,3 +1,4 @@
+import { readImageStream } from '../src/lib/image-stream';
 import { afterAll, beforeEach, describe, expect, spyOn, test } from 'bun:test';
 import { NextRequest } from 'next/server';
 import sharp from 'sharp';
@@ -129,31 +130,57 @@ describe('image route', () => {
         expect(requests).toHaveLength(0);
     });
 
-    test('streams a complete two-image batch and rejects a third request without spending quota', async () => {
-        const result = await events(await send({ n: '2', stream: 'true', partial_images: '1' }));
-        expect(result.filter((event) => event.type === 'partial_image')).toHaveLength(2);
+    test.each(['0', '1'])('sends final image data once per image (partial_images=%s)', async (partialImages) => {
+        const wire = await (await send({ n: '2', stream: 'true', partial_images: partialImages })).text();
+        const result = await events(new Response(wire));
+        expect(result.filter((event) => event.type === 'partial_image')).toHaveLength(partialImages === '1' ? 2 : 0);
         expect(result.filter((event) => event.type === 'completed')).toHaveLength(2);
         expect(result.filter((event) => event.type === 'completed').every((event) => event.b64_json === png)).toBe(
             true
         );
-        expect(result.at(-1).images).toHaveLength(2);
+        expect(result.at(-1).completed_count).toBe(2);
+        expect(result.at(-1).images).toBeUndefined();
+        expect(wire.split(`"b64_json":"${png}"`).length - 1).toBe(partialImages === '1' ? 4 : 2);
+        const assembled = await readImageStream(
+            new Response(wire),
+            new AbortController().signal,
+            () => {},
+            () => {}
+        );
+        expect(assembled.images).toHaveLength(2);
+        expect(assembled.images.every((image) => image.b64_json === png)).toBe(true);
+        expect(assembled.error).toBeUndefined();
         const limited = await send();
         expect(limited.status).toBe(429);
         expect(limited.headers.get('retry-after')).toBe('60');
         expect(requests).toHaveLength(2);
     });
 
-    test('preserves successful images on quota failure and respects upstream cooldown', async () => {
-        outcome = 'partial-failure';
-        const result = await events(await send({ n: '2', stream: 'true' }));
-        expect(result.at(-1).type).toBe('done');
-        expect(result.at(-1).images).toHaveLength(1);
-        expect(result.at(-1).error).toContain('75 seconds');
-        expect(result.at(-1).failures[0].status).toBe(429);
-        const limited = await send();
-        expect(limited.headers.get('retry-after')).toBe('75');
-        expect(requests).toHaveLength(2);
-    });
+    test.each(['0', '1'])(
+        'keeps successful images and upstream cooldown (partial_images=%s)',
+        async (partialImages) => {
+            outcome = 'partial-failure';
+            const wire = await (await send({ n: '2', stream: 'true', partial_images: partialImages })).text();
+            const result = await events(new Response(wire));
+            expect(result.at(-1).type).toBe('done');
+            expect(result.at(-1).completed_count).toBe(1);
+            expect(result.at(-1).images).toBeUndefined();
+            expect(result.at(-1).error).toContain('75 seconds');
+            expect(result.at(-1).failures[0].status).toBe(429);
+            const assembled = await readImageStream(
+                new Response(wire),
+                new AbortController().signal,
+                () => {},
+                () => {}
+            );
+            expect(assembled.images).toHaveLength(1);
+            expect(assembled.images[0].b64_json).toBe(png);
+            expect(assembled.error).toContain('75 seconds');
+            const limited = await send();
+            expect(limited.headers.get('retry-after')).toBe('75');
+            expect(requests).toHaveLength(2);
+        }
+    );
 
     test('returns HTTP 429 and Retry-After when every nonstreaming request is limited', async () => {
         outcome = 'quota';

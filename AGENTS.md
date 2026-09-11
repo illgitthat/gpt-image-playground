@@ -214,6 +214,13 @@ for await (const event of response) {
 - Responses usage currently describes the text orchestrator, not image-token usage. Do not price those output tokens as image tokens.
 - Follow https://developers.openai.com/api/docs/guides/image-prompting and the local `prompt-guide.md` when changing image prompts.
 
+### App image streaming
+
+- `/api/images` sends each final image once in a `completed` event, with its index and image payload.
+- `done` contains `completed_count`, usage, and any partial-failure details, not image payloads. The client assembles images in index order and verifies the count against received `completed` events.
+- On cancellation or a broken stream, keep only completed images already received.
+- New image history entries have `costDetails: null`; Responses-level usage is not a source of image pricing, even when it includes an input-modality breakdown.
+
 ## Video Generation (Sora)
 
 Video generation uses raw fetch with the gateway's Sora endpoint.

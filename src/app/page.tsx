@@ -19,7 +19,6 @@ import { VideoForm, type VideoFormData } from '@/components/video-form';
 import { VideoOutput } from '@/components/video-output';
 import {
     DEFAULT_GPT_IMAGE_MODEL,
-    calculateApiCost,
     calculateSoraVideoCost,
     type CostDetails,
     type GptImageModel
@@ -765,12 +764,7 @@ export default function HomePage() {
         return filenames;
     };
 
-    const storeImageBatch = async (
-        formData: GenerationFormData,
-        images: GeneratedImage[],
-        durationMs: number,
-        usage?: unknown
-    ) => {
+    const storeImageBatch = async (formData: GenerationFormData, images: GeneratedImage[], durationMs: number) => {
         const processedImages: { path: string; filename: string }[] = [];
         const failures: string[] = [];
         for (const image of images) {
@@ -806,9 +800,8 @@ export default function HomePage() {
             output_format: formData.output_format,
             prompt: formData.prompt,
             mode: 'generate',
-            costDetails: usage
-                ? calculateApiCost(usage as Parameters<typeof calculateApiCost>[0], formData.model)
-                : null,
+            // Responses usage belongs to the text orchestrator, not the image model.
+            costDetails: null,
             model: formData.model,
             ...(references.length ? { referenceImageFilenames: references } : {})
         };
@@ -905,7 +898,7 @@ export default function HomePage() {
                 );
                 if (result.error) setError(result.error);
                 if (result.images.length) {
-                    await storeImageBatch(formData, result.images, Date.now() - startTime, result.usage);
+                    await storeImageBatch(formData, result.images, Date.now() - startTime);
                 }
                 return;
             }
@@ -943,7 +936,7 @@ export default function HomePage() {
                 if (typeof result.error === 'string' && result.error) {
                     setError(result.error);
                 }
-                await storeImageBatch(formData, result.images, durationMs, result.usage);
+                await storeImageBatch(formData, result.images, durationMs);
             } else {
                 setLatestImageBatch(null);
                 throw new Error('API response did not contain valid image data or filenames.');
