@@ -1,53 +1,28 @@
 import type OpenAI from 'openai';
 
-const generateSystemPrompt = `You are an expert prompt engineer for GPT image generation models, especially gpt-image-2. Rewrite the user's request into a single, highly effective prompt that works across many production use cases (photorealistic images, illustrations, logos, UI mockups, infographics, slides, diagrams, product shots, ads, style transfer).
+const imagePromptRules = `Target gpt-image-2.5-flare (the default, speed-oriented model) and gpt-image-2.5-sunburst (quality-oriented). The same prompting principles apply to both.
+- Return only the image prompt, without commentary, markdown fences, or quotes around the whole response. Prefer brief prose; use short labeled sections only when complex requirements benefit.
+- Preserve every user-specified fact, name, count, color, placement, aspect ratio, exclusion, and change/preserve constraint. Do not invent data, citations, claims, branding, or extra subjects. User specifics take precedence over general advice.
+- Keep literal text verbatim, including spelling, capitalization, punctuation, and line breaks. Quote required copy; retain its requested placement, typography, and repetition count. Add legibility and no-extra-text constraints when appropriate, without removing required or preserved text. Optional spelling cues must not replace the literal wording.
+- Identify references by their original numbers (Image 1, Image 2, etc.) and roles, and explain what is borrowed or moved and where. Never renumber images or invent unseen details from filenames.
+- Describe visible composition, materials, light, color, and medium only as needed. If photorealism is requested, say "photorealistic" and use plausible texture, framing, gaze, and object interaction. Camera specifications are appearance cues, not physical guarantees.
+- Adapt to the artifact: practical layout and controls for interfaces; supplied labels, data, relationships, and readable hierarchy for charts or educational visuals; clear visual beats for comic panels; simple scalable shapes for logos. Describe the finished result, not critique or recommendations.
+- For requested transparent assets, specify an isolated subject, clean alpha edges, and no solid backdrop or painted checkerboard; do not add an unrequested shadow. Preserve product geometry and label text. Do not impose an opaque background.
+- Keep model, quality, resolution, format, and batch settings in API controls, not invented parameter instructions in the prompt; retain user-stated visual dimensions and background requirements.
+- Use the shortest prompt that preserves the complete request. Do not pad to a word quota or truncate required details; avoid generic quality buzzwords.`;
 
-Write the prompt in this order (use natural prose, not labels): scene/background → subject → key details → composition/camera → lighting/mood → style/medium → constraints.
+const generateSystemPrompt = `Rewrite the user's image request into a clear production-ready prompt. Establish the intended artifact, scene, subject, important visible details, composition, and constraints. Add only useful details consistent with the request, not a new creative direction.
 
-Rules:
-- Return ONLY the raw prompt text (no markdown, no lists, no headings, no quotes around the whole prompt).
-- Preserve the user's intent and any provided facts (names, brands, counts, colors, era, layout requirements). Do not add new claims that change the meaning.
-- Add concrete, production-relevant details when missing: materials, textures, environment cues, wardrobe/props, and realism cues; prefer specific camera/composition terms (e.g., 50mm lens, shallow depth of field, top-down, centered subject with left-side negative space).
-- Photorealism: when the user asks for a photo, portrait, real-world scene, product shot, or natural-looking result, explicitly include "photorealistic" or "real photograph" and add believable physical details such as natural light, imperfect texture, fabric wear, pores, reflections, shadows, or surface scratches as appropriate.
-- If the user asks for feedback, critique, improvements, UX changes, a better version, or a redesign, rewrite it as a prompt for the finished improved visual result. Do not write recommendations, analysis, or an explanation.
-- If the user implies an output type, adapt the prompt to that artifact: ads should read like a creative brief with audience, brand vibe, composition, exact copy, and typography; logos should be original, simple, scalable marks with balanced negative space; UI mockups should describe real interface hierarchy, spacing, controls, and legible text; infographics, slides, diagrams, charts, and educational visuals should specify clear hierarchy, readable labels, arrows/callouts, accurate data/text, and uncluttered spacing; product mockups should preserve label integrity, clean edges, a plain opaque background, and subtle contact shadow unless the user asks otherwise.
-- Text in image: if the user requests text, include it verbatim in "QUOTES" and specify typography (font style, weight, color, placement, and contrast). For uncommon words, spell them letter-by-letter.
-- Multi-image inputs: if the user references multiple images, explicitly label them by index (Image 1, Image 2, …), identify each image's role when inferable (subject, style reference, background, garment, product, target scene), and describe how they interact (e.g., apply Image 2 style to Image 1 subject).
-- Constraints: include hard requirements the user stated (e.g., background, aspect, placement, exclusions). When expressing exclusions, keep phrasing minimal and constraint-like.
-- Length target: ~75-140 words. Be concise and visual; avoid filler and generic quality buzzwords.
+${imagePromptRules}`;
 
-Examples of the kind of output you should produce (do not copy verbatim; adapt to the user):
-- Infographic: "A clean technical infographic explaining the flow of an automatic coffee machine… labeled components, consistent typography hierarchy, high contrast, precise arrows and callouts…"
-- Edit-style request phrased as generation: "A realistic mobile app UI mockup inside an iPhone frame… clear hierarchy, legible text, consistent spacing…"`;
+const editSystemPrompt = `Rewrite the user's request using the supplied reference images.
+- For local edits, state what to change and its desired final state, then what must remain unchanged. Preserve relevant identity, geometry, pose, layout, camera angle, lighting, saturation, contrast, labels, arrows, and surrounding objects. "Keep everything else the same" applies only outside the requested changes.
+- For a new reference-inspired image, identify which subject, style, palette, or composition to borrow and describe the new result. Do not impose pixel-for-pixel preservation, but retain every explicit invariant.
+- Style transfer, scene changes, redesigns, and seasonal changes do not waive identity or layout constraints. When intent is ambiguous, stay close to the request rather than defaulting to a wholesale redesign.
+- For translation, replace only the requested text and preserve layout and other content; translate only when asked. For sketch-to-render work, preserve specified proportions and perspective rather than inventing elements.
+- For iterative edits, restate critical invariants and focus on the requested changes; do not claim prompting guarantees pixel-identical preservation.
 
-const editSystemPrompt = `You are an expert prompt engineer for GPT image generation with reference images, especially gpt-image-2. The user provides one or more reference images alongside a text request. Your job is to determine the user's intent and rewrite the prompt accordingly.
-
-There are two modes — infer which one fits:
-
-1. **Edit mode** — the user wants to modify a specific part of the reference image while keeping the rest intact.
-   - Use the pattern: "Change only X" + desired final state + "Keep everything else the same."
-    - Be explicit about what changes and what stays. Restate relevant invariants: identity, facial features, body shape, pose, geometry, layout, camera angle, perspective, lighting direction, shadows, color/contrast, labels, surrounding objects, and background.
-    - Match original style, lighting, perspective unless user requests otherwise.
-    - For surgical edits, avoid global restyling. Do not alter saturation, contrast, layout, camera angle, labels, arrows, logos, surrounding objects, or unrelated details unless the user asks.
-    - For product extraction or catalog-style edits, preserve label text and packaging geometry, use clean edges, a plain opaque background, and a subtle contact shadow unless the user asks otherwise.
-   - Keep it concise (20-60 words).
-
-2. **Inspiration mode** — the user wants a NEW image that draws from the reference for style, mood, composition, subject matter, or color palette — but is NOT asking to preserve the reference pixel-for-pixel.
-    - Signals: vague/open-ended prompts ("something like this", "in this style", "inspired by"), requests for a different subject, major scene changes, style transfer, critique/feedback/improvement requests, or prompts that describe an entirely new concept.
-   - Write a full generative prompt (75-140 words) that references what to borrow from the reference (e.g., "matching the warm color palette and painterly style of the reference image") while describing the new scene, subject, composition, lighting, and style.
-    - For critique, UX improvement, homepage redesign, or "make this better" requests, describe the finished improved image/mockup directly: clearer hierarchy, refined layout, stronger primary action, better affordances, polished spacing, improved typography, and any specific user-stated constraints. Do not output recommendations, bullets, or analysis.
-    - For style transfer, preserve the reference's visual language (palette, texture, brushwork, line quality, film grain, lighting mood) while making the new subject and scene explicit.
-   - Do NOT use "keep everything else the same" — the user wants creative freedom.
-
-General rules:
-- Return ONLY the raw prompt text (no markdown, no labels, no explanations).
-- If editing or adding text in the image, include it in "QUOTES" with typography notes.
-- Multi-image inputs: label by index (Image 1, Image 2, …), identify each image's role when inferable (subject, style reference, background, garment, product, target scene), and describe how they interact, including what element moves where and what must remain unchanged.
-- Default to inspiration mode when the intent is ambiguous — users can always re-run with a more specific edit instruction.
-
-Examples:
-- Edit: Input "Make the dog a cat" → "Change only the dog into a fluffy Siamese cat sitting in the same spot, matching the original lighting and perspective. Keep everything else the same."
-- Inspiration: Input "A winter version of this" → "A snow-covered village square at twilight, borrowing the cozy architectural style and warm amber window glow from the reference image. Frost-dusted cobblestones, a light snowfall, bare birch trees strung with fairy lights, 35mm lens, soft diffused overcast lighting, muted blues and warm golds."`;
+${imagePromptRules}`;
 
 const videoWithReferenceSystemPrompt = `You are an expert prompt engineer for image-to-video generation (Sora 2) using a single reference frame. Rewrite the user's request into an actionable video directive that keeps fidelity to the reference image while describing motion precisely.
 
@@ -84,49 +59,68 @@ Rules:
 - Do not invent factual details the user did not imply; stay faithful to their intent.
 - Length target: 80-120 words for detailed control.`;
 
-const surpriseGenerateSystemPrompt = `You are a wildly creative image prompt generator for a text-to-image model. Generate ONE unique, unexpected, and delightful image concept that showcases the model's strengths.
+const surprisePromptRules = `Create ONE unexpected, concrete image concept for gpt-image-2.5-flare (default) or gpt-image-2.5-sunburst. Return only a concise image prompt, usually one paragraph, with no explanation or word-count padding.
+- Choose a distinctive subject, intended artifact, composition, medium, and useful material/light/color details; avoid generic quality buzzwords.
+- Vary photography, illustration, product imagery, logos, interfaces, and structured visuals. Interfaces should look usable; diagrams need readable labels and coherent relationships, not invented factual claims or citations.
+- If including text, quote the exact copy and specify placement, legible typography, and repetition count; exclude unintended extra text.
+- Keep API settings separate from visual instructions. For transparent concepts, request clean alpha edges without a solid backdrop, painted checkerboard, or unrequested shadow.
+- Keep content family-friendly and avoid real public figures, brands, and political/geopolitical references.`;
 
-Rules:
-- Be specific and vivid: include subject, environment, materials, lighting, composition, and style/medium.
-- Surprise the user: prefer unexpected combinations, oddly specific concepts, and imaginative juxtapositions over generic ideas.
-- Avoid clichés (sunset over mountains, neon city at night). If you reach for one, twist it into something memorable.
-- Lean into the model's strengths: photorealism, illustration, infographics, UI mockups, logos, product shots, structured visuals, or text rendering. Vary the mode each time.
-- Use concrete craft cues — camera/lens, lighting direction, palette, medium — instead of vague buzzwords like "8K" or "cinematic masterpiece".
-- If text appears in the image, put it in "QUOTES" and specify typography (font style, weight, color, placement).
-- Output ONLY the raw prompt text (no markdown, no headings, no labels, no quotes around the whole prompt, no preamble).
-- Length target: 60-120 words. Single coherent paragraph in natural prose.
-- Keep content family-friendly and avoid real public figures, brands, or political/geopolitical references.
+const surpriseGenerateSystemPrompt = `${surprisePromptRules}
+Invent a fresh scene with an imaginative but coherent combination of subjects or materials rather than a familiar stock-image concept.`;
 
-Examples of the kind of output you should produce (do not copy verbatim; vary subject, mode, and style each time):
-- A hand-painted gouache illustration of an elderly librarian cataloguing tiny glass jars of bottled weather on tall wooden shelves, warm afternoon light filtering through stained glass, palette of mustard, teal, cream, and walnut, soft brushwork with visible paper grain, eye-level medium shot, gentle storybook mood.
-- A clean isometric infographic explaining how a sourdough starter ferments over 24 hours, six labeled stages with tiny cross-sections of a glass jar, pastel cream and rye-brown palette, sans-serif labels reading "STARTER STAGES", consistent line weights, generous whitespace, magazine spread layout.
-- A photorealistic macro photograph of a vintage typewriter key embossed with the symbol "@", shallow depth of field, 100mm macro lens, fine dust and tiny scratches visible, dramatic side lighting from a desk lamp, deep amber and graphite tones, resting on a worn leather notebook.`;
-
-const surpriseEditSystemPrompt = `You are a wildly creative image prompt generator for a text-to-image model. The user has provided one or more reference images. Generate ONE unique, unexpected, and delightful prompt that uses the reference image(s) as a creative springboard.
-
-You can surprise the user with EITHER:
-- A bold transformation/edit of the reference (changing style, medium, era, season, or context dramatically)
-- An entirely new scene inspired by elements in the reference (borrowing style, palette, mood, or subject as a starting point)
-
-Rules:
-- Ground the concept in something visible in the reference image(s) — a subject, color palette, composition, mood, or style — but feel free to reimagine it freely.
-- Surprise the user: prefer unexpected combinations, dramatic reinterpretations, and imaginative leaps over safe tweaks like "make it brighter."
-- If editing a specific element, be clear about what changes. If generating something new, describe what you're borrowing from the reference.
-- If multiple images are provided, label them by index (Image 1, Image 2, ...) and describe how they interact.
-- If text appears in the image, include it in "QUOTES" with typography notes.
-- Output ONLY the raw prompt (no markdown, no labels, no preamble).
-- Length target: 40-100 words.
-- Keep content family-friendly and avoid real public figures, brands, or political references.
-
-Examples (do not copy verbatim; adapt to the actual reference images):
-- "Reimagine this scene as a detailed cross-section diorama inside a glass bottle, preserving the original's warm amber palette and cozy atmosphere. Tiny furniture, miniature lighting, visible glass curvature with subtle reflections, tilt-shift bokeh, macro lens, cream background."
-- "A hand-painted ukiyo-e woodblock print depicting the same subject and composition from the reference, translated into bold flat colors with black outlines, traditional wave patterns in the background, gold leaf accents, washi paper texture."
-- "Add a tiny origami crane perched on the rim of the coffee mug, casting a soft realistic shadow across the saucer, matching the warm window light and shallow depth of field of the original. Change nothing else."`;
+const surpriseEditSystemPrompt = `${surprisePromptRules}
+Ground the idea in visible reference details. Choose either a specific edit with an explicit change/preserve boundary or a new scene that borrows named elements. Preserve identity, product geometry, and literal labels when retaining that subject; do not silently redesign unrelated details in a local edit. Identify each reference by its original number (Image 1, Image 2, etc.), assign its role, and explain how the inputs combine. Do not infer unseen image content from filenames.`;
 
 export type PromptEnhanceImagePayload = {
     dataUrl: string;
     alt?: string;
 };
+
+export class PromptReferenceImageError extends Error {
+    constructor(message: string, public readonly status = 400) {
+        super(message);
+        this.name = 'PromptReferenceImageError';
+    }
+}
+
+export function parsePromptReferenceImages(input: unknown): PromptEnhanceImagePayload[] {
+    if (input === undefined || input === null) return [];
+    if (!Array.isArray(input)) {
+        throw new PromptReferenceImageError('Reference images must be an array.');
+    }
+    if (input.length > 5) {
+        throw new PromptReferenceImageError('Provide at most 5 reference images.');
+    }
+
+    // Reject the whole request rather than silently shifting the user's image indexes.
+    return input.map((candidate, index) => {
+        const dataUrl = typeof candidate === 'string'
+            ? candidate
+            : candidate && typeof candidate === 'object' && 'dataUrl' in candidate
+                ? candidate.dataUrl
+                : undefined;
+        const alt = candidate && typeof candidate === 'object' && 'alt' in candidate && typeof candidate.alt === 'string'
+            ? candidate.alt
+            : undefined;
+        if (typeof dataUrl !== 'string') {
+            throw new PromptReferenceImageError(`Reference image ${index + 1} must be an image data URL.`);
+        }
+        if (dataUrl.length > 7 * 1024 * 1024) {
+            throw new PromptReferenceImageError(`Reference image ${index + 1} payload is too large.`, 413);
+        }
+        const match = /^data:image\/(?:png|jpeg|jpg|webp|gif);base64,([A-Za-z0-9+/=\r\n]+)$/i.exec(dataUrl);
+        const base64 = match?.[1].replace(/[\r\n]/g, '');
+        if (!base64 || base64.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(base64)) {
+            throw new PromptReferenceImageError(`Reference image ${index + 1} must be a base64 PNG, JPEG, WebP, or GIF data URL.`);
+        }
+        const padding = base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0;
+        if (base64.length * 3 / 4 - padding > 5 * 1024 * 1024) {
+            throw new PromptReferenceImageError(`Reference image ${index + 1} payload is too large.`, 413);
+        }
+        return { dataUrl, alt };
+    });
+}
 
 export type BuildPromptEnhanceOptions = {
     referenceImages?: PromptEnhanceImagePayload[];
@@ -141,15 +135,28 @@ export type PromptEnhanceParams = {
     input: string | ResponseInputItem[];
 };
 
+function buildReferenceInput(
+    prompt: string,
+    images: PromptEnhanceImagePayload[],
+    detail: 'auto' | 'low'
+): ResponseInputItem[] {
+    const content: ResponseInputContent[] = [];
+    images.forEach((image, index) => {
+        content.push({ type: 'input_text', text: `Image ${index + 1}${image.alt ? `: ${image.alt}` : ''}` });
+        content.push({ type: 'input_image', image_url: image.dataUrl, detail });
+    });
+    content.push({ type: 'input_text', text: prompt });
+    return [{ role: 'user', content }];
+}
+
 export function buildPromptEnhanceInput(
     mode: 'generate' | 'video',
     prompt: string,
     options?: BuildPromptEnhanceOptions
 ): PromptEnhanceParams {
-    const hasReferenceImages = Array.isArray(options?.referenceImages) && options?.referenceImages.length > 0;
+    const referenceImages = options?.referenceImages ?? [];
+    const hasReferenceImages = referenceImages.length > 0;
 
-    // When reference images are provided in generate mode, use the edit system prompt
-    // since it's optimized for describing modifications to existing images
     const instructions =
         mode === 'video'
             ? options?.videoHasReferenceImage
@@ -159,28 +166,11 @@ export function buildPromptEnhanceInput(
                 ? editSystemPrompt
                 : generateSystemPrompt;
 
-    // Simple string input when no reference images
     if (!hasReferenceImages) {
         return { instructions, input: prompt };
     }
 
-    // Multi-modal input with images
-    const content: ResponseInputContent[] = [];
-
-    options!.referenceImages!.forEach((img, index) => {
-        if (img.alt) {
-            content.push({ type: 'input_text', text: `Reference image ${index + 1}: ${img.alt}` });
-        }
-        content.push({
-            type: 'input_image',
-            image_url: img.dataUrl,
-            detail: 'low'
-        });
-    });
-
-    content.push({ type: 'input_text', text: prompt });
-
-    return { instructions, input: [{ role: 'user', content }] };
+    return { instructions, input: buildReferenceInput(prompt, referenceImages, mode === 'video' ? 'low' : 'auto') };
 }
 
 export type SurpriseMeMode = 'generate';
@@ -193,7 +183,8 @@ export function buildSurpriseMeInput(
     mode: SurpriseMeMode,
     options?: BuildSurpriseMeOptions
 ): PromptEnhanceParams {
-    const hasReferenceImages = Array.isArray(options?.referenceImages) && options?.referenceImages.length > 0;
+    const referenceImages = options?.referenceImages ?? [];
+    const hasReferenceImages = referenceImages.length > 0;
     const instructions =
         hasReferenceImages ? surpriseEditSystemPrompt : surpriseGenerateSystemPrompt;
 
@@ -219,20 +210,5 @@ export function buildSurpriseMeInput(
         return { instructions, input: seed };
     }
 
-    const content: ResponseInputContent[] = [];
-
-    options!.referenceImages!.forEach((img, index) => {
-        if (img.alt) {
-            content.push({ type: 'input_text', text: `Reference image ${index + 1}: ${img.alt}` });
-        }
-        content.push({
-            type: 'input_image',
-            image_url: img.dataUrl,
-            detail: 'low'
-        });
-    });
-
-    content.push({ type: 'input_text', text: seed });
-
-    return { instructions, input: [{ role: 'user', content }] };
+    return { instructions, input: buildReferenceInput(seed, referenceImages, 'auto') };
 }

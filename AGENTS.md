@@ -29,7 +29,6 @@ Key points:
 ```
 AZURE_OPENAI_ENDPOINT=https://...y/openai/v1
 AZURE_OPENAI_API_KEY=<your-key>
-AZURE_OPENAI_DEPLOYMENT_NAME=gpt-image-2
 AZURE_OPENAI_TEXT_MODEL=gpt-chat-latest  # Optional, for prompt enhancement
 ```
 
@@ -86,7 +85,7 @@ const apiClient = new OpenAI({
     baseURL: process.env.AZURE_OPENAI_ENDPOINT,
     defaultHeaders: {
         'api-key': process.env.AZURE_OPENAI_API_KEY,
-        'x-ms-oai-image-generation-deployment': 'gpt-image-1.5',
+        'x-ms-oai-image-generation-deployment': 'gpt-image-2.5-flare',
         'api_version': 'preview',
     },
 });
@@ -201,6 +200,19 @@ for await (const event of response) {
 ```
 
 **Note**: The legacy `/images/generations` endpoint is NOT available on this gateway. Streaming must use the Responses API.
+
+### GPT Image 2.5 gateway constraints
+
+- Supported deployments: `gpt-image-2.5-flare` (default) and `gpt-image-2.5-sunburst`.
+- Select the gateway deployment through `x-ms-oai-image-generation-deployment` only. Do not set the image tool's `model` field for gateway requests; its validator rejects the new model IDs.
+- `AZURE_OPENAI_DEPLOYMENT_NAME` is no longer used. Older models are not supported.
+- Allow at most 2 images per batch and 2 image requests per minute per model. Do not add automatic retries that spend extra quota.
+- Only the four existing size presets and `auto`/`low`/`medium`/`high` quality are exposed. The gateway rejects custom sizes and extended quality settings.
+- Both models support transparency. JPEG cannot preserve alpha.
+- The gateway accepts PNG/JPEG, not WebP. Encode WebP locally from PNG with Sharp.
+- Native output dimensions can differ from the requested preset. Preserve native image data.
+- Responses usage currently describes the text orchestrator, not image-token usage. Do not price those output tokens as image tokens.
+- Follow https://developers.openai.com/api/docs/guides/image-prompting and the local `prompt-guide.md` when changing image prompts.
 
 ## Video Generation (Sora)
 

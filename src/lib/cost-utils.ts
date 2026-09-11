@@ -16,11 +16,11 @@ export type CostDetails = {
     image_output_tokens: number;
 };
 
-export const GPT_IMAGE_MODELS = ['gpt-image-2', 'gpt-image-1.5', 'gpt-image-1', 'gpt-image-1-mini'] as const;
+export const GPT_IMAGE_MODELS = ['gpt-image-2.5-flare', 'gpt-image-2.5-sunburst'] as const;
 
 export type GptImageModel = (typeof GPT_IMAGE_MODELS)[number];
 
-export const DEFAULT_GPT_IMAGE_MODEL: GptImageModel = 'gpt-image-2';
+export const DEFAULT_GPT_IMAGE_MODEL: GptImageModel = 'gpt-image-2.5-flare';
 
 export type ModelRates = {
     textInputPerToken: number;
@@ -39,75 +39,17 @@ export function isGptImageModel(value: unknown): value is GptImageModel {
 // Pricing for Sora video
 const SORA_VIDEO_COST_PER_SECOND = 0.1; // $0.10 per second
 
-// Pricing for gpt-image-1
-const GPT_IMAGE_1_TEXT_INPUT_COST_PER_TOKEN = 0.000005; // $5.00/1M
-const GPT_IMAGE_1_IMAGE_INPUT_COST_PER_TOKEN = 0.00001; // $10.00/1M
-const GPT_IMAGE_1_IMAGE_OUTPUT_COST_PER_TOKEN = 0.00004; // $40.00/1M
-const GPT_IMAGE_1_CACHED_INPUT_COST_PER_TOKEN = 0.000002; // approximate, aligns with previous cached pricing
-
-// Pricing for gpt-image-1-mini
-const GPT_IMAGE_1_MINI_TEXT_INPUT_COST_PER_TOKEN = 0.000002; // $2.00/1M
-const GPT_IMAGE_1_MINI_IMAGE_INPUT_COST_PER_TOKEN = 0.0000025; // $2.50/1M
-const GPT_IMAGE_1_MINI_IMAGE_OUTPUT_COST_PER_TOKEN = 0.000008; // $8.00/1M
-const GPT_IMAGE_1_MINI_CACHED_INPUT_COST_PER_TOKEN = 0.0000008; // rough parity with cached discount
-
-// Pricing for gpt-image-1.5
-const GPT_IMAGE_1_5_TEXT_INPUT_COST_PER_TOKEN = 0.000005; // $5.00/1M
-const GPT_IMAGE_1_5_IMAGE_INPUT_COST_PER_TOKEN = 0.000008; // $8.00/1M
-const GPT_IMAGE_1_5_IMAGE_OUTPUT_COST_PER_TOKEN = 0.000032; // $32.00/1M
-const GPT_IMAGE_1_5_CACHED_INPUT_COST_PER_TOKEN = 0.000002; // from prior implementation
-
-// Pricing for gpt-image-2
-const GPT_IMAGE_2_TEXT_INPUT_COST_PER_TOKEN = 0.000005; // $5.00/1M
-const GPT_IMAGE_2_IMAGE_INPUT_COST_PER_TOKEN = 0.000008; // $8.00/1M
-const GPT_IMAGE_2_IMAGE_OUTPUT_COST_PER_TOKEN = 0.00003; // $30.00/1M
-const GPT_IMAGE_2_CACHED_INPUT_COST_PER_TOKEN = 0.000002; // approximate parity with current cached pricing
-
-export function getModelRates(model: GptImageModel): ModelRates {
-    if (model === 'gpt-image-1-mini') {
-        return {
-            textInputPerToken: GPT_IMAGE_1_MINI_TEXT_INPUT_COST_PER_TOKEN,
-            imageInputPerToken: GPT_IMAGE_1_MINI_IMAGE_INPUT_COST_PER_TOKEN,
-            cachedInputPerToken: GPT_IMAGE_1_MINI_CACHED_INPUT_COST_PER_TOKEN,
-            imageOutputPerToken: GPT_IMAGE_1_MINI_IMAGE_OUTPUT_COST_PER_TOKEN,
-            textInputPerMillion: 2,
-            imageInputPerMillion: 2.5,
-            imageOutputPerMillion: 8
-        };
-    }
-
-    if (model === 'gpt-image-1.5') {
-        return {
-            textInputPerToken: GPT_IMAGE_1_5_TEXT_INPUT_COST_PER_TOKEN,
-            imageInputPerToken: GPT_IMAGE_1_5_IMAGE_INPUT_COST_PER_TOKEN,
-            cachedInputPerToken: GPT_IMAGE_1_5_CACHED_INPUT_COST_PER_TOKEN,
-            imageOutputPerToken: GPT_IMAGE_1_5_IMAGE_OUTPUT_COST_PER_TOKEN,
-            textInputPerMillion: 5,
-            imageInputPerMillion: 8,
-            imageOutputPerMillion: 32
-        };
-    }
-
-    if (model === 'gpt-image-2') {
-        return {
-            textInputPerToken: GPT_IMAGE_2_TEXT_INPUT_COST_PER_TOKEN,
-            imageInputPerToken: GPT_IMAGE_2_IMAGE_INPUT_COST_PER_TOKEN,
-            cachedInputPerToken: GPT_IMAGE_2_CACHED_INPUT_COST_PER_TOKEN,
-            imageOutputPerToken: GPT_IMAGE_2_IMAGE_OUTPUT_COST_PER_TOKEN,
-            textInputPerMillion: 5,
-            imageInputPerMillion: 8,
-            imageOutputPerMillion: 30
-        };
-    }
-
+// Both GPT Image 2.5 models have the same published token rates.
+// https://developers.openai.com/api/docs/pricing
+export function getModelRates(): ModelRates {
     return {
-        textInputPerToken: GPT_IMAGE_1_TEXT_INPUT_COST_PER_TOKEN,
-        imageInputPerToken: GPT_IMAGE_1_IMAGE_INPUT_COST_PER_TOKEN,
-        cachedInputPerToken: GPT_IMAGE_1_CACHED_INPUT_COST_PER_TOKEN,
-        imageOutputPerToken: GPT_IMAGE_1_IMAGE_OUTPUT_COST_PER_TOKEN,
+        textInputPerToken: 0.000005,
+        imageInputPerToken: 0.000008,
+        cachedInputPerToken: 0.00000125,
+        imageOutputPerToken: 0.00003,
         textInputPerMillion: 5,
-        imageInputPerMillion: 10,
-        imageOutputPerMillion: 40
+        imageInputPerMillion: 8,
+        imageOutputPerMillion: 30
     };
 }
 
@@ -121,7 +63,15 @@ export function calculateApiCost(
     usage: ApiUsage | undefined | null,
     model: GptImageModel = DEFAULT_GPT_IMAGE_MODEL
 ): CostDetails | null {
-    if (!usage || !usage.input_tokens_details || usage.output_tokens === undefined || usage.output_tokens === null) {
+    if (
+        !isGptImageModel(model) ||
+        !usage ||
+        !usage.input_tokens_details ||
+        usage.input_tokens_details.text_tokens === undefined ||
+        usage.input_tokens_details.image_tokens === undefined ||
+        usage.output_tokens === undefined ||
+        usage.output_tokens === null
+    ) {
         console.warn('Invalid or missing usage data for cost calculation:', usage);
         return null;
     }
@@ -132,16 +82,21 @@ export function calculateApiCost(
     const imgOutT = usage.output_tokens ?? 0;
 
     if (
-        typeof textInT !== 'number' ||
-        typeof imgInT !== 'number' ||
-        typeof cachedInT !== 'number' ||
-        typeof imgOutT !== 'number'
+        !Number.isFinite(textInT) || textInT < 0 ||
+        !Number.isFinite(imgInT) || imgInT < 0 ||
+        !Number.isFinite(cachedInT) || cachedInT < 0 ||
+        !Number.isFinite(imgOutT) || imgOutT < 0
     ) {
         console.error('Invalid token types in usage data:', usage);
         return null;
     }
 
-    const rates = getModelRates(model);
+    // A combined cached count cannot be priced accurately by modality.
+    if (cachedInT > 0) {
+        console.warn('Image cost unavailable: cached text/image token breakdown is missing.');
+        return null;
+    }
+    const rates = getModelRates();
 
     const effectiveTextTokens = Math.max(textInT - cachedInT, 0);
     const billableInputTokens = effectiveTextTokens + imgInT;

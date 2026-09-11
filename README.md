@@ -8,13 +8,13 @@ A focused web playground for generating images with GPT Image models through the
 
 ## Features
 
-- **GPT Image generation:** Generate up to 5 images per request with `gpt-image-2`, `gpt-image-1.5`, `gpt-image-1`, or `gpt-image-1-mini`.
+- **GPT Image 2.5:** Choose Flare (default, speed-focused) or Sunburst (quality-focused). Generate up to 2 images per batch.
 - **Reference-image workflow:** Drop, paste, upload, reuse, or send previous outputs back into the generator as visual references.
 - **Streaming progress:** Image requests use an SSE path with keep-alives and optional partial-image previews so long generations do not leave the UI idle.
 - **Prompt tools:** Use `gpt-chat-latest` to enhance prompts or generate a "Surprise me" idea, with optional reference-image context.
 - **Output controls:** Choose count, size (`auto`, square, landscape, portrait), quality, output format (`png`, `jpeg`, `webp`), and compression for JPEG/WebP.
 - **History and reuse:** Browse generated batches, open images in a lightbox, download selected images, reuse prompts, reuse prompts with references, and delete entries.
-- **Cost estimates:** Store token usage and estimated USD costs per generation in local history.
+- **Cost estimates:** Estimate image cost only when the API provides image-token usage. Text-orchestrator usage is not an image-cost estimate.
 - **Storage options:** Save generated images to the local filesystem by default, or use browser IndexedDB for serverless deployments.
 - **Password protection:** Add `APP_PASSWORD` to require a shared password before API-backed operations.
 
@@ -31,6 +31,8 @@ A focused web playground for generating images with GPT Image models through the
 </p>
 
 ## Quick start
+
+Use Node.js 22.13 or later in the 22.x line, or Node.js 24 or later, and Bun.
 
 ```bash
 git clone https://github.com/illgitthat/gpt-image-playground.git
@@ -63,12 +65,28 @@ OPENAI_API_KEY=sk-your-openai-api-key-here
 ```dotenv
 AZURE_OPENAI_API_KEY=your-azure-api-key
 AZURE_OPENAI_ENDPOINT=https://your-gateway.com/openai/v1
-AZURE_OPENAI_DEPLOYMENT_NAME=gpt-image-2
 ```
 
 The app uses the standard `openai` package, not the Azure SDK. For Azure-compatible endpoints, requests are authenticated with the `api-key` header and image generation is routed through the Responses API `image_generation` tool.
 
-If `AZURE_OPENAI_DEPLOYMENT_NAME` is set to a concrete deployment alias that is not one of the built-in model IDs, the server sends that value in the `x-ms-oai-image-generation-deployment` header. If it is set to a built-in model ID, the selected UI model is used.
+Deploy `gpt-image-2.5-flare` and `gpt-image-2.5-sunburst` at the same endpoint. The selected model is sent in the `x-ms-oai-image-generation-deployment` header. `AZURE_OPENAI_DEPLOYMENT_NAME` is no longer used; remove it from existing configurations. Older image models are not supported.
+
+For this gateway, do not also send the model in the image tool: its validator rejects the new IDs even though the deployments work through the header. Standard OpenAI requests use the tool's `model` field.
+
+### Model limits
+
+The app allows 2 image requests per minute, per model, and at most 2 images per batch. Five-image live batches produced rate-limit failures on both deployments. The server reserves each batch against a rolling one-minute window and reports a wait time when the quota is full. It does not retry automatically. Successful images from a partially failed batch are kept.
+
+The local quota guard applies to one server process. Other clients and server instances share the upstream quota; the gateway remains authoritative. Upstream `429` responses include the wait time when available.
+
+The [OpenAI prompting guide](https://developers.openai.com/api/docs/guides/image-prompting) describes additional GPT Image 2.5 settings. Live tests of this gateway confirmed these narrower limits:
+
+- Size: `auto`, `1024x1024`, `1536x1024`, or `1024x1536`. Custom 2K sizes are rejected. Returned pixel dimensions can differ from the requested preset; the app preserves the native output.
+- Quality: `auto`, `low`, `medium`, or `high`. Extended quality settings are not exposed because the gateway rejects them.
+- Background: `auto`, `opaque`, or `transparent`. Transparency requires PNG or WebP.
+- Format: PNG and JPEG are generated directly. WebP is encoded locally from PNG because the gateway rejects direct WebP output. JPEG compression is sent to the API; WebP compression is applied locally.
+
+See [prompt-guide.md](./prompt-guide.md) for concise prompting and output-review guidance.
 
 ### Prompt enhancement
 
@@ -113,7 +131,11 @@ Useful scripts:
 | `bun run build` | Build the production app. |
 | `bun run start` | Start the production server after a build. |
 | `bun run lint` | Run ESLint. |
+| `bun run typecheck` | Check TypeScript types. |
+| `bun test` | Run behavior tests without live API calls. |
 | `bun run format` | Format source files with Prettier. |
+
+Dependencies use current stable releases where compatible. ESLint stays on 9.x because the React lint plugin does not support ESLint 10; TypeScript stays on 6.0.x because typescript-eslint does not support TypeScript 7.
 
 ## Production with systemd
 

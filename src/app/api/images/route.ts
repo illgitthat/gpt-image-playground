@@ -1,9 +1,11 @@
-import { GPT_IMAGE_MODELS, isGptImageModel, type GptImageModel } from '@/lib/cost-utils';
+import { ImageInputError, parseImageOptions } from '@/lib/image-options';
+import { createImageQuota } from '@/lib/image-quota';
 import crypto from 'crypto';
 import fs from 'fs/promises';
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
 import path from 'path';
+import sharp from 'sharp';
 
 type StreamingEvent = {
     type: 'partial_image' | 'completed' | 'error' | 'done';
@@ -40,6 +42,8 @@ type SavedImageData = {
 type GenerationFailure = {
     index: number;
     error: string;
+    status?: number;
+    retryAfter?: number;
 };
 
 function addUsageValue(left?: number, right?: number): number | undefined {
@@ -81,35 +85,17 @@ function mergeUsage(total: ApiUsage | undefined, next: ApiUsage | undefined): Ap
 
 const config = {
     apiKey: process.env.AZURE_OPENAI_API_KEY || process.env.OPENAI_API_KEY,
-    baseURL: process.env.AZURE_OPENAI_ENDPOINT || process.env.OPENAI_API_BASE_URL,
-    deployment: process.env.AZURE_OPENAI_DEPLOYMENT_NAME
+    baseURL: process.env.AZURE_OPENAI_ENDPOINT || process.env.OPENAI_API_BASE_URL
 };
 
 const useCustomEndpoint = Boolean(process.env.AZURE_OPENAI_ENDPOINT);
 const responseModel = process.env.AZURE_OPENAI_TEXT_MODEL || 'gpt-chat-latest';
 
 const outputDir = path.resolve(process.cwd(), 'generated-images');
+const imageQuota = createImageQuota();
 
 const VALID_OUTPUT_FORMATS = ['png', 'jpeg', 'webp'] as const;
 type ValidOutputFormat = (typeof VALID_OUTPUT_FORMATS)[number];
-
-function parseRequestedModel(value: FormDataEntryValue | null): GptImageModel | null {
-    return isGptImageModel(value) ? value : null;
-}
-
-function resolveAzureImageDeployment(requestedModel: GptImageModel): string | undefined {
-    const configuredDeployment = config.deployment?.trim();
-
-    if (!configuredDeployment) {
-        return requestedModel;
-    }
-
-    if (isGptImageModel(configuredDeployment)) {
-        return requestedModel;
-    }
-
-    return configuredDeployment;
-}
 
 function createApiClient(imageDeployment?: string) {
     const defaultHeaders = useCustomEndpoint
@@ -123,7 +109,9 @@ function createApiClient(imageDeployment?: string) {
     return new OpenAI({
         apiKey: useCustomEndpoint ? 'unused' : config.apiKey,
         baseURL: config.baseURL,
-        defaultHeaders
+        defaultHeaders,
+        maxRetries: 0,
+        timeout: 600_000
     });
 }
 
@@ -167,8 +155,17 @@ async function persistGeneratedImage(
     filename: string,
     b64_json: string,
     output_format: ValidOutputFormat,
-    effectiveStorageMode: 'fs' | 'indexeddb'
+    effectiveStorageMode: 'fs' | 'indexeddb',
+    outputCompression?: number
 ): Promise<SavedImageData> {
+    // The gateway accepts PNG/JPEG only. Encode WebP locally from lossless PNG.
+    if (output_format === 'webp') {
+        b64_json = (
+            await sharp(Buffer.from(b64_json, 'base64'))
+                .webp({ quality: Math.max(1, outputCompression ?? 100) })
+                .toBuffer()
+        ).toString('base64');
+    }
     if (effectiveStorageMode === 'fs') {
         const buffer = Buffer.from(b64_json, 'base64');
         const filepath = path.join(outputDir, filename);
@@ -193,10 +190,11 @@ type GenerateImageOptions = {
     apiClient: OpenAI;
     inputContent: string | OpenAI.Responses.ResponseInputItem[];
     imageGenTool: OpenAI.Responses.Tool;
-    timestamp: number;
+    timestamp: string;
     fileExtension: ValidOutputFormat;
     effectiveStorageMode: 'fs' | 'indexeddb';
     signal?: AbortSignal;
+    outputCompression?: number;
 };
 
 type GeneratedImageResult = {
@@ -211,9 +209,7 @@ type SettledGenerationBatch = {
     usage?: ApiUsage;
 };
 
-const IMAGE_GENERATION_INSTRUCTIONS = `You are an image generation orchestrator. You must satisfy every allowed request by calling the image_generation tool and producing an image. Do not answer with text, critique, recommendations, questions, markdown, refusals, or explanations instead of an image. If the user asks for feedback, improvements, UX changes, redesigns, or edits to a reference image, interpret that as a request to generate the final improved visual result. When reference images are provided, use them as source material or visual references according to the user's prompt and create the requested final image.`;
-
-const IMAGE_GENERATION_RETRY_INSTRUCTIONS = `${IMAGE_GENERATION_INSTRUCTIONS} The previous attempt returned text instead of an image. For this attempt, call the image_generation tool and return the image result.`;
+const IMAGE_GENERATION_INSTRUCTIONS = `Create the requested image with the image_generation tool. Treat requests to improve, redesign, or edit a reference as requests for the resulting image. Follow the user's scene, subject, composition, exact quoted text, and constraints without adding unrelated content. Reference images are numbered in input order; use each for its stated role. For edits, change only what is requested and preserve all other details, including identity, geometry, layout, lighting, and labels. API parameters control size, quality, background, and format separately from the prompt.`;
 
 const IMAGE_GENERATION_TOOL_CHOICE: OpenAI.Responses.ToolChoiceAllowed = {
     type: 'allowed_tools',
@@ -229,15 +225,12 @@ function createImageGenerationResponse({
     apiClient,
     inputContent,
     imageGenTool,
-    signal,
-    retry
-}: Pick<GenerateImageOptions, 'apiClient' | 'inputContent' | 'imageGenTool' | 'signal'> & {
-    retry?: boolean;
-}) {
+    signal
+}: Pick<GenerateImageOptions, 'apiClient' | 'inputContent' | 'imageGenTool' | 'signal'>) {
     return apiClient.responses.create(
         {
             model: responseModel,
-            instructions: retry ? IMAGE_GENERATION_RETRY_INSTRUCTIONS : IMAGE_GENERATION_INSTRUCTIONS,
+            instructions: IMAGE_GENERATION_INSTRUCTIONS,
             input: inputContent,
             tools: [imageGenTool],
             tool_choice: IMAGE_GENERATION_TOOL_CHOICE
@@ -247,6 +240,10 @@ function createImageGenerationResponse({
 }
 
 function getErrorMessage(error: unknown): string {
+    if (error instanceof OpenAI.APIError && error.status === 429) {
+        const seconds = getRetryAfter(error);
+        return `Model quota reached. Wait ${seconds} seconds, then try again.`;
+    }
     if (error instanceof Error) {
         return error.message;
     }
@@ -256,6 +253,12 @@ function getErrorMessage(error: unknown): string {
     }
 
     return 'Unknown image generation error.';
+}
+
+function getRetryAfter(error: InstanceType<typeof OpenAI.APIError>): number {
+    const value = error.headers?.get('retry-after');
+    const seconds = value && /^\d+$/.test(value) ? Number(value) : value ? (Date.parse(value) - Date.now()) / 1000 : 60;
+    return Number.isFinite(seconds) ? Math.max(1, Math.ceil(seconds)) : 60;
 }
 
 function formatFailureMessage(failures: GenerationFailure[], totalRequested: number): string {
@@ -268,11 +271,11 @@ function formatFailureMessage(failures: GenerationFailure[], totalRequested: num
             return failures[0].error;
         }
 
-        return `Failed to generate all ${totalRequested} images.`;
+        return `Failed to generate all ${totalRequested} images. ${failures[0].error}`;
     }
 
     const failedImages = failures.map((failure) => `#${failure.index + 1}`).join(', ');
-    return `${failures.length} of ${totalRequested} image${failures.length === 1 ? '' : 's'} failed (${failedImages}). Successful images are shown below.`;
+    return `${failures.length} of ${totalRequested} image${failures.length === 1 ? '' : 's'} failed (${failedImages}). ${failures[0].error} Successful images are shown below.`;
 }
 
 async function settleGenerationTasks(tasks: Promise<GeneratedImageResult>[]): Promise<SettledGenerationBatch> {
@@ -294,7 +297,13 @@ async function settleGenerationTasks(tasks: Promise<GeneratedImageResult>[]): Pr
 
         failures.push({
             index,
-            error: getErrorMessage(task.reason)
+            error: getErrorMessage(task.reason),
+            ...(task.reason instanceof OpenAI.APIError
+                ? {
+                      status: task.reason.status,
+                      ...(task.reason.status === 429 ? { retryAfter: getRetryAfter(task.reason) } : {})
+                  }
+                : {})
         });
     });
 
@@ -313,20 +322,12 @@ async function generateSingleImage({
     timestamp,
     fileExtension,
     effectiveStorageMode,
-    signal
+    signal,
+    outputCompression
 }: GenerateImageOptions): Promise<GeneratedImageResult> {
-    let response = await createImageGenerationResponse({ apiClient, inputContent, imageGenTool, signal });
+    const response = await createImageGenerationResponse({ apiClient, inputContent, imageGenTool, signal });
 
-    let imageOutput = response.output?.find((item) => item.type === 'image_generation_call') as
-        | { type: 'image_generation_call'; result?: string }
-        | undefined;
-
-    if (!imageOutput?.result && !signal?.aborted) {
-        response = await createImageGenerationResponse({ apiClient, inputContent, imageGenTool, signal, retry: true });
-        imageOutput = response.output?.find((item) => item.type === 'image_generation_call') as
-            | { type: 'image_generation_call'; result?: string }
-            | undefined;
-    }
+    const imageOutput = response.output?.find((item) => item.type === 'image_generation_call');
 
     if (!imageOutput?.result) {
         // Try to extract a text explanation from the model responses
@@ -340,7 +341,8 @@ async function generateSingleImage({
         filename,
         imageOutput.result,
         fileExtension,
-        effectiveStorageMode
+        effectiveStorageMode,
+        outputCompression
     );
 
     return {
@@ -364,7 +366,8 @@ async function generateSingleImageWithPartialStreaming(
         fileExtension,
         effectiveStorageMode,
         signal,
-        onPartialImage
+        onPartialImage,
+        outputCompression
     } = options;
 
     const response = await apiClient.responses.create(
@@ -384,7 +387,13 @@ async function generateSingleImageWithPartialStreaming(
     let usage: ApiUsage | undefined;
     let textContent = '';
 
-    for await (const event of response as AsyncIterable<{ type: string; [key: string]: unknown }>) {
+    for await (const event of response) {
+        if (event.type === 'error') {
+            throw new Error(event.message);
+        }
+        if (event.type === 'response.failed' || event.type === 'response.incomplete') {
+            throw new Error(event.response.error?.message || `Image response ${event.response.status}.`);
+        }
         if (event.type === 'response.image_generation_call.partial_image') {
             const partialB64 = event.partial_image_b64 as string | undefined;
             const partialIndex = event.partial_image_index as number | undefined;
@@ -406,7 +415,7 @@ async function generateSingleImageWithPartialStreaming(
         } else if (event.type === 'response.output_text.delta') {
             const delta = event.delta as string | undefined;
             if (delta) textContent += delta;
-        } else if (event.type === 'response.completed' || event.type === 'response.done') {
+        } else if (event.type === 'response.completed') {
             const completedResponse = event.response as { usage?: ApiUsage; output_text?: string } | undefined;
             usage = completedResponse?.usage;
             if (!textContent && completedResponse?.output_text) {
@@ -416,30 +425,18 @@ async function generateSingleImageWithPartialStreaming(
     }
 
     if (!finalImageB64) {
-        if (!signal?.aborted) {
-            const retryResult = await generateSingleImage({
-                index,
-                apiClient,
-                inputContent,
-                imageGenTool,
-                timestamp,
-                fileExtension,
-                effectiveStorageMode,
-                signal
-            });
-
-            return {
-                ...retryResult,
-                usage: mergeUsage(usage, retryResult.usage)
-            };
-        }
-
         const detail = textContent ? `: ${textContent}` : '.';
         throw new Error(`No image was generated${detail}`);
     }
 
     const filename = `${timestamp}-${index}.${fileExtension}`;
-    const savedImage = await persistGeneratedImage(filename, finalImageB64, fileExtension, effectiveStorageMode);
+    const savedImage = await persistGeneratedImage(
+        filename,
+        finalImageB64,
+        fileExtension,
+        effectiveStorageMode,
+        outputCompression
+    );
 
     return {
         index,
@@ -491,62 +488,41 @@ export async function POST(request: NextRequest) {
             }
         }
 
-        const prompt = formData.get('prompt') as string | null;
-        const model = parseRequestedModel(formData.get('model'));
-
-        if (!prompt) {
-            return NextResponse.json({ error: 'Missing required parameter: prompt' }, { status: 400 });
-        }
-
-        if (!model) {
-            return NextResponse.json(
-                { error: `Missing or invalid model. Expected one of: ${GPT_IMAGE_MODELS.join(', ')}` },
-                { status: 400 }
-            );
-        }
-
-        const imageDeployment = useCustomEndpoint ? resolveAzureImageDeployment(model) : undefined;
+        const options = parseImageOptions(formData);
+        const { prompt, model, n, size, quality, output_format, background, partialImages, output_compression } =
+            options;
+        const imageDeployment = useCustomEndpoint ? model : undefined;
         const apiClient = createApiClient(imageDeployment);
 
         console.log(
             `Image request resolved to model ${model}${imageDeployment ? ` (Azure deployment: ${imageDeployment})` : ''}.`
         );
 
-        const n = parseInt((formData.get('n') as string) || '1', 10);
-        const size = (formData.get('size') as string) || '1024x1024';
-        const quality = (formData.get('quality') as 'auto' | 'low' | 'medium' | 'high') || 'auto';
-        const output_format = (formData.get('output_format') as 'png' | 'jpeg' | 'webp') || 'png';
-        const background = (formData.get('background') as 'auto' | 'opaque' | 'transparent') || 'auto';
-        const effectiveBackground = model === 'gpt-image-2' ? 'auto' : background;
-        const partialImages = parseInt((formData.get('partial_images') as string) || '0', 10);
-        const useStreaming = formData.get('stream') === 'true';
+        const useStreaming = options.stream;
         const usePartialImageStreaming = useStreaming && partialImages > 0;
 
         // Build the image generation tool with parameters
-        const imageGenTool = {
+        const imageGenTool: OpenAI.Responses.Tool = {
             type: 'image_generation',
-            model,
+            ...(!useCustomEndpoint ? { model } : {}),
             size,
             quality: quality === 'auto' ? undefined : quality,
-            background: effectiveBackground === 'auto' ? undefined : effectiveBackground,
-            output_format,
+            background: background === 'auto' ? undefined : background,
+            output_format: output_format === 'webp' ? 'png' : output_format,
+            ...(output_format === 'jpeg' && output_compression !== undefined ? { output_compression } : {}),
             ...(usePartialImageStreaming ? { partial_images: partialImages } : {})
-        } as OpenAI.Responses.Tool;
+        };
 
         // Build input: check for optional reference images
         let inputContent: string | OpenAI.Responses.ResponseInputItem[];
 
-        const imageFiles: File[] = [];
-        for (const [key, value] of formData.entries()) {
-            if (key.startsWith('image_') && value instanceof File) {
-                imageFiles.push(value);
-            }
-        }
+        const imageFiles = options.references;
 
         if (imageFiles.length > 0) {
             // Build multimodal input with reference images + text prompt
             const imageContents: OpenAI.Responses.ResponseInputContent[] = [];
-            for (const file of imageFiles) {
+            for (const [index, file] of imageFiles.entries()) {
+                imageContents.push({ type: 'input_text', text: `Image ${index + 1}:` });
                 const arrayBuffer = await file.arrayBuffer();
                 const base64 = Buffer.from(arrayBuffer).toString('base64');
                 const mimeType = file.type || 'image/png';
@@ -562,20 +538,35 @@ export async function POST(request: NextRequest) {
             inputContent = prompt;
         }
 
-        const timestamp = Date.now();
+        const timestamp = `${Date.now()}-${crypto.randomUUID()}`;
         const fileExtension = validateOutputFormat(output_format);
-        const maxImages = Math.min(n, 5);
+        const maxImages = n;
+        const retryAfter = imageQuota.reserve(model, n);
+        if (retryAfter) {
+            return NextResponse.json(
+                {
+                    error: `This model allows 2 image requests per minute. Wait ${retryAfter} seconds, or choose the other model.`,
+                    retryAfter
+                },
+                { status: 429, headers: { 'Retry-After': String(retryAfter) } }
+            );
+        }
+        const recordQuotaFailures = (batch: SettledGenerationBatch) => {
+            const retryAfter = Math.max(0, ...batch.failures.map((failure) => failure.retryAfter ?? 0));
+            if (retryAfter) imageQuota.defer(model, retryAfter);
+        };
 
         // Streaming response
         if (useStreaming) {
             console.log(
                 usePartialImageStreaming
                     ? `Using model-streamed image mode with partial_images: ${partialImages}`
-                    : `Using server-streamed batch mode for ${Math.min(n, 5)} image(s).`
+                    : `Using server-streamed batch mode for ${n} image(s).`
             );
 
             const encoder = new TextEncoder();
             const clientAbort = request.signal;
+            const upstreamController = new AbortController();
             let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
             const stream = new ReadableStream({
                 async start(controller) {
@@ -611,7 +602,6 @@ export async function POST(request: NextRequest) {
                     }, 15000);
 
                     // Abort upstream call if the browser disconnects.
-                    const upstreamController = new AbortController();
                     const onClientAbort = () => {
                         clientDisconnected = true;
                         upstreamController.abort();
@@ -636,6 +626,7 @@ export async function POST(request: NextRequest) {
                                     timestamp,
                                     fileExtension,
                                     effectiveStorageMode,
+                                    outputCompression: output_compression,
                                     signal: upstreamController.signal,
                                     onPartialImage: ({ partialImageB64, partialImageIndex }) => {
                                         if (closed) {
@@ -653,25 +644,25 @@ export async function POST(request: NextRequest) {
                                             )
                                         );
                                     }
+                                }).then((result) => {
+                                    if (!closed) {
+                                        safeEnqueue(
+                                            encoder.encode(
+                                                sseEvent({
+                                                    type: 'completed',
+                                                    index: result.index,
+                                                    filename: result.savedImage.filename,
+                                                    output_format: result.savedImage.output_format
+                                                })
+                                            )
+                                        );
+                                    }
+                                    return result;
                                 })
-                                    .then((result) => {
-                                        if (!closed) {
-                                            safeEnqueue(
-                                                encoder.encode(
-                                                    sseEvent({
-                                                        type: 'completed',
-                                                        index: result.index,
-                                                        filename: result.savedImage.filename,
-                                                        output_format: result.savedImage.output_format
-                                                    })
-                                                )
-                                            );
-                                        }
-                                        return result;
-                                    })
                             );
 
                             const settledBatch = await settleGenerationTasks(generationTasks);
+                            recordQuotaFailures(settledBatch);
                             generationResults = settledBatch.results;
 
                             if (closed) {
@@ -687,7 +678,9 @@ export async function POST(request: NextRequest) {
                                         sseEvent({
                                             type: 'error',
                                             error: failureMessage || 'No image was generated',
-                                            ...(settledBatch.failures.length > 0 ? { failures: settledBatch.failures } : {})
+                                            ...(settledBatch.failures.length > 0
+                                                ? { failures: settledBatch.failures }
+                                                : {})
                                         })
                                     )
                                 );
@@ -701,7 +694,9 @@ export async function POST(request: NextRequest) {
                                         type: 'done',
                                         images: savedImagesData,
                                         usage: settledBatch.usage,
-                                        ...(failureMessage ? { error: failureMessage, failures: settledBatch.failures } : {})
+                                        ...(failureMessage
+                                            ? { error: failureMessage, failures: settledBatch.failures }
+                                            : {})
                                     })
                                 )
                             );
@@ -717,26 +712,27 @@ export async function POST(request: NextRequest) {
                                     timestamp,
                                     fileExtension,
                                     effectiveStorageMode,
+                                    outputCompression: output_compression,
                                     signal: upstreamController.signal
+                                }).then((result) => {
+                                    if (!closed) {
+                                        safeEnqueue(
+                                            encoder.encode(
+                                                sseEvent({
+                                                    type: 'completed',
+                                                    index: result.index,
+                                                    filename: result.savedImage.filename,
+                                                    output_format: result.savedImage.output_format
+                                                })
+                                            )
+                                        );
+                                    }
+                                    return result;
                                 })
-                                    .then((result) => {
-                                        if (!closed) {
-                                            safeEnqueue(
-                                                encoder.encode(
-                                                    sseEvent({
-                                                        type: 'completed',
-                                                        index: result.index,
-                                                        filename: result.savedImage.filename,
-                                                        output_format: result.savedImage.output_format
-                                                    })
-                                                )
-                                            );
-                                        }
-                                        return result;
-                                    })
                             );
 
                             const settledBatch = await settleGenerationTasks(generationTasks);
+                            recordQuotaFailures(settledBatch);
                             generationResults = settledBatch.results;
 
                             if (closed) {
@@ -752,7 +748,9 @@ export async function POST(request: NextRequest) {
                                         sseEvent({
                                             type: 'error',
                                             error: failureMessage || 'No image was generated',
-                                            ...(settledBatch.failures.length > 0 ? { failures: settledBatch.failures } : {})
+                                            ...(settledBatch.failures.length > 0
+                                                ? { failures: settledBatch.failures }
+                                                : {})
                                         })
                                     )
                                 );
@@ -766,7 +764,9 @@ export async function POST(request: NextRequest) {
                                         type: 'done',
                                         images: savedImagesData,
                                         usage: settledBatch.usage,
-                                        ...(failureMessage ? { error: failureMessage, failures: settledBatch.failures } : {})
+                                        ...(failureMessage
+                                            ? { error: failureMessage, failures: settledBatch.failures }
+                                            : {})
                                     })
                                 )
                             );
@@ -793,6 +793,7 @@ export async function POST(request: NextRequest) {
                     }
                 },
                 cancel() {
+                    upstreamController.abort();
                     if (heartbeatInterval) {
                         clearInterval(heartbeatInterval);
                         heartbeatInterval = null;
@@ -821,10 +822,13 @@ export async function POST(request: NextRequest) {
                     imageGenTool,
                     timestamp,
                     fileExtension,
-                    effectiveStorageMode
+                    effectiveStorageMode,
+                    outputCompression: output_compression,
+                    signal: request.signal
                 })
             )
         );
+        recordQuotaFailures(settledBatch);
 
         const savedImagesData = settledBatch.results.map((result) => result.savedImage);
         const failureMessage = formatFailureMessage(settledBatch.failures, maxImages);
@@ -835,7 +839,18 @@ export async function POST(request: NextRequest) {
                     error: failureMessage || 'Failed to generate any images.',
                     ...(settledBatch.failures.length > 0 ? { failures: settledBatch.failures } : {})
                 },
-                { status: 500 }
+                {
+                    status: settledBatch.failures.every((failure) => failure.status === 429) ? 429 : 502,
+                    ...(settledBatch.failures.some((failure) => failure.retryAfter)
+                        ? {
+                              headers: {
+                                  'Retry-After': String(
+                                      Math.max(...settledBatch.failures.map((failure) => failure.retryAfter ?? 0))
+                                  )
+                              }
+                          }
+                        : {})
+                }
             );
         }
 
@@ -848,7 +863,7 @@ export async function POST(request: NextRequest) {
         console.error('Error in /api/images:', error);
 
         let errorMessage = 'An unexpected error occurred.';
-        let status = 500;
+        let status = error instanceof ImageInputError ? 400 : 500;
 
         if (error instanceof Error) {
             errorMessage = error.message;

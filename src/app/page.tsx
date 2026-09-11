@@ -26,6 +26,7 @@ import {
 } from '@/lib/cost-utils';
 import { db, type ImageRecord } from '@/lib/db';
 import { compressImageForUpload } from '@/lib/image-compress';
+import { MAX_REFERENCE_IMAGES } from '@/lib/image-options';
 import { useLiveQuery } from 'dexie-react-hooks';
 import * as React from 'react';
 
@@ -56,7 +57,6 @@ export type HistoryMetadata = {
     referenceImageFilenames?: string[];
 };
 
-const MAX_REFERENCE_IMAGES = 5;
 const MAX_PROMPT_ENHANCE_IMAGES = 3;
 
 const explicitModeClient = process.env.NEXT_PUBLIC_IMAGE_STORAGE_MODE;
@@ -374,13 +374,9 @@ export default function HomePage() {
     const handlePromptEnhance = async (targetMode: 'generate' | 'video') => {
         const isGenerate = targetMode === 'generate';
         const targetPrompt = isGenerate ? genPrompt : videoPrompt;
-        const setLoading = isGenerate
-            ? setIsEnhancingGenPrompt
-            : setIsEnhancingVideoPrompt;
+        const setLoading = isGenerate ? setIsEnhancingGenPrompt : setIsEnhancingVideoPrompt;
         const setPrompt = isGenerate ? setGenPrompt : setVideoPrompt;
-        const setEnhanceError = isGenerate
-            ? setGenPromptEnhanceError
-            : setVideoPromptEnhanceError;
+        const setEnhanceError = isGenerate ? setGenPromptEnhanceError : setVideoPromptEnhanceError;
 
         if (!targetPrompt.trim()) {
             setEnhanceError('Add a prompt first.');
@@ -844,7 +840,8 @@ export default function HomePage() {
 
                         // Update streaming preview with partial image
                         const imageIndex = typeof event.index === 'number' ? event.index : 0;
-                        const dataUrl = `data:image/png;base64,${partialImageB64}`;
+                        const previewFormat = formData.output_format === 'jpeg' ? 'jpeg' : 'png';
+                        const dataUrl = `data:image/${previewFormat};base64,${partialImageB64}`;
                         setStreamingPreviewImages((prev) => {
                             const newMap = new Map(prev);
                             newMap.set(imageIndex, dataUrl);
@@ -1489,7 +1486,7 @@ export default function HomePage() {
     };
 
     return (
-        <main className='flex min-h-screen flex-col items-center bg-background px-5 py-8 text-foreground md:px-10 md:py-12 lg:px-16 lg:py-16'>
+        <main className='bg-background text-foreground flex min-h-screen flex-col items-center px-5 py-8 md:px-10 md:py-12 lg:px-16 lg:py-16'>
             <PasswordDialog
                 isOpen={isPasswordDialogOpen}
                 onOpenChange={setIsPasswordDialogOpen}
@@ -1535,10 +1532,10 @@ export default function HomePage() {
                             : ''}
             </div>
             <div className='w-full max-w-[1400px] space-y-8'>
-                <header className='rise-in flex flex-col gap-6 border-b border-border pb-6 lg:flex-row lg:items-end lg:justify-between'>
+                <header className='rise-in border-border flex flex-col gap-6 border-b pb-6 lg:flex-row lg:items-end lg:justify-between'>
                     <div className='flex min-w-0 flex-col gap-3'>
-                        <h1 className='font-display text-[clamp(1.5rem,8.2vw,1.875rem)] leading-[0.95] tracking-tight text-foreground sm:text-5xl md:text-6xl lg:text-7xl'>
-                            gpt<span className='italic text-primary'>·image</span>
+                        <h1 className='font-display text-foreground text-[clamp(1.5rem,8.2vw,1.875rem)] leading-[0.95] tracking-tight sm:text-5xl md:text-6xl lg:text-7xl'>
+                            gpt<span className='text-primary italic'>·image</span>
                             <span className='text-muted-foreground'>/</span>playground
                         </h1>
                     </div>
@@ -1613,7 +1610,9 @@ export default function HomePage() {
                     </div>
                     <div className='flex min-h-[360px] flex-col lg:col-span-1 lg:h-[70vh] lg:min-h-[600px]'>
                         {error && (
-                            <Alert variant='destructive' className='mb-4 border-destructive/50 bg-destructive/15 text-destructive'>
+                            <Alert
+                                variant='destructive'
+                                className='border-destructive/50 bg-destructive/15 text-destructive mb-4'>
                                 <AlertTitle className='text-destructive'>Error</AlertTitle>
                                 <AlertDescription>{error}</AlertDescription>
                             </Alert>
