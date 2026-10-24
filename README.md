@@ -6,7 +6,7 @@ Generate and edit images with GPT Image 2.5 Flare and Sunburst, using reference 
 
 ## Quick start
 
-Use Node.js 24 LTS and [Bun](https://bun.sh).
+Use Node.js 26 LTS and [Bun](https://bun.sh).
 
 ```bash
 git clone https://github.com/illgitthat/gpt-image-playground.git
