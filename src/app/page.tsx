@@ -17,12 +17,7 @@ import {
 } from '@/components/ui/dialog';
 import { VideoForm, type VideoFormData } from '@/components/video-form';
 import { VideoOutput } from '@/components/video-output';
-import {
-    DEFAULT_GPT_IMAGE_MODEL,
-    calculateSoraVideoCost,
-    type CostDetails,
-    type GptImageModel
-} from '@/lib/cost-utils';
+import { DEFAULT_IMAGE_MODEL, calculateSoraVideoCost, type CostDetails, type ImageModel } from '@/lib/cost-utils';
 import { db, type ImageRecord } from '@/lib/db';
 import { compressImageForUpload } from '@/lib/image-compress';
 import { MAX_REFERENCE_IMAGES } from '@/lib/image-options';
@@ -52,7 +47,7 @@ export type HistoryMetadata = {
     mode: 'generate' | 'edit' | 'video';
     costDetails: CostDetails | null;
     output_format?: GenerationFormData['output_format'];
-    model?: GptImageModel | 'sora-2';
+    model?: ImageModel | 'sora-2';
     videoSize?: '1280x720' | '720x1280';
     videoSeconds?: number;
     referenceImageFilenames?: string[];
@@ -106,7 +101,7 @@ export default function HomePage() {
 
     const allDbImages = useLiveQuery<ImageRecord[] | undefined>(() => db.images.toArray(), []);
 
-    const [genModel, setGenModel] = React.useState<GenerationFormData['model']>(DEFAULT_GPT_IMAGE_MODEL);
+    const [genModel, setGenModel] = React.useState<GenerationFormData['model']>(DEFAULT_IMAGE_MODEL);
     const [genPromptDraft, dispatchGenPrompt] = React.useReducer(promptDraftReducer, EMPTY_PROMPT_DRAFT);
     const genPrompt = genPromptDraft.text;
     const setGenPrompt = React.useCallback((value: React.SetStateAction<string>) => {

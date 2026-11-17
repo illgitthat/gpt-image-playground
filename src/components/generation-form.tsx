@@ -8,7 +8,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Slider } from '@/components/ui/slider';
 import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { type GptImageModel } from '@/lib/cost-utils';
+import { isMaiImageModel, type ImageModel } from '@/lib/cost-utils';
 import { compressImagesForUpload } from '@/lib/image-compress';
 import { IMAGE_REQUESTS_PER_MINUTE, MAX_IMAGES } from '@/lib/image-options';
 import {
@@ -44,7 +44,7 @@ export type GenerationFormData = {
     output_compression?: number;
     background: 'transparent' | 'opaque' | 'auto';
     moderation: 'low';
-    model: GptImageModel;
+    model: ImageModel;
     referenceImages: File[];
 };
 
@@ -155,6 +155,7 @@ export function GenerationForm({
     isCancelling
 }: GenerationFormProps) {
     const showCompression = outputFormat === 'jpeg' || outputFormat === 'webp';
+    const isMai = isMaiImageModel(model);
     const [imageAddError, setImageAddError] = React.useState<string | null>(null);
     const [isPastingImage, setIsPastingImage] = React.useState(false);
     const [isDraggingOver, setIsDraggingOver] = React.useState(false);
@@ -338,9 +339,28 @@ export function GenerationForm({
                         <RadioGroup
                             aria-label='Image model'
                             value={model}
-                            onValueChange={(value) => setModel(value as GptImageModel)}
+                            onValueChange={(value) => {
+                                setModel(value as ImageModel);
+                                if (isMaiImageModel(value) && background === 'transparent') setBackground('auto');
+                            }}
                             disabled={isLoading}
-                            className='grid grid-cols-2 gap-3'>
+                            className='grid grid-cols-3 gap-3'>
+                            <Label
+                                htmlFor='model-mai'
+                                className='border-border bg-background has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-primary/5 grid cursor-pointer grid-cols-[auto_1fr] items-center gap-x-2 gap-y-1 rounded-md border p-3'>
+                                <RadioGroupItem
+                                    value='MAI-Image-2.7'
+                                    id='model-mai'
+                                    aria-label='MAI 2.7'
+                                    aria-describedby='model-mai-description'
+                                />
+                                <span>MAI 2.7</span>
+                                <span
+                                    id='model-mai-description'
+                                    className='text-muted-foreground col-start-2 text-xs font-normal'>
+                                    Microsoft MAI
+                                </span>
+                            </Label>
                             <Label
                                 htmlFor='model-flare'
                                 className='border-border bg-background has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-primary/5 grid cursor-pointer grid-cols-[auto_1fr] items-center gap-x-2 gap-y-1 rounded-md border p-3'>
@@ -644,13 +664,13 @@ export function GenerationForm({
                         <div>
                             <Label className='text-foreground block'>Quality</Label>
                             <span className='text-muted-foreground text-xs'>
-                                Higher quality takes longer to generate
+                                {isMai ? 'MAI 2.7 has no quality setting' : 'Higher quality takes longer to generate'}
                             </span>
                         </div>
                         <RadioGroup
                             value={quality}
                             onValueChange={(value) => setQuality(value as GenerationFormData['quality'])}
-                            disabled={isLoading}
+                            disabled={isLoading || isMai}
                             className='flex flex-wrap gap-x-5 gap-y-3'>
                             <RadioItemWithIcon value='auto' id='quality-auto' label='Auto' Icon={Sparkles} />
                             <RadioItemWithIcon value='low' id='quality-low' label='Low' Icon={Tally1} />
@@ -676,6 +696,7 @@ export function GenerationForm({
                                 id='bg-transparent'
                                 label='Transparent'
                                 Icon={Eraser}
+                                disabled={isMai}
                             />
                         </RadioGroup>
                     </div>

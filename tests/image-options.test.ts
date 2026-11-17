@@ -10,8 +10,9 @@ function form(values: Record<string, string> = {}) {
 }
 
 describe('image request options', () => {
-    test('defaults to Flare and accepts Sunburst', () => {
-        expect(parseImageOptions(form()).model).toBe('gpt-image-2.5-flare');
+    test('defaults to MAI and accepts Flare and Sunburst', () => {
+        expect(parseImageOptions(form()).model).toBe('MAI-Image-2.7');
+        expect(parseImageOptions(form({ model: 'gpt-image-2.5-flare' })).model).toBe('gpt-image-2.5-flare');
         expect(parseImageOptions(form({ model: 'gpt-image-2.5-sunburst' })).model).toBe('gpt-image-2.5-sunburst');
     });
 
@@ -35,7 +36,13 @@ describe('image request options', () => {
     });
 
     test('allows transparent WebP and preserves reference order', () => {
-        const data = form({ n: '2', output_format: 'webp', background: 'transparent', output_compression: '60' });
+        const data = form({
+            model: 'gpt-image-2.5-flare',
+            n: '2',
+            output_format: 'webp',
+            background: 'transparent',
+            output_compression: '60'
+        });
         data.set('image_0', new File(['first'], 'first.png', { type: 'image/png' }));
         data.set('image_1', new File(['second'], 'second.png', { type: 'image/png' }));
         const options = parseImageOptions(data);

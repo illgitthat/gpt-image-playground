@@ -1,4 +1,4 @@
-import { DEFAULT_GPT_IMAGE_MODEL, isGptImageModel } from './cost-utils';
+import { DEFAULT_IMAGE_MODEL, isImageModel, isMaiImageModel } from './cost-utils';
 
 export const MAX_IMAGES = 2;
 export const IMAGE_REQUESTS_PER_MINUTE = 2;
@@ -29,10 +29,13 @@ function integer(form: FormData, key: string, min: number, max: number, fallback
 export function parseImageOptions(form: FormData) {
     const prompt = form.get('prompt');
     if (typeof prompt !== 'string' || !prompt.trim()) throw new ImageInputError('Enter an image prompt.');
-    const model = form.get('model') ?? DEFAULT_GPT_IMAGE_MODEL;
-    if (!isGptImageModel(model)) throw new ImageInputError('Choose GPT Image 2.5 Flare or Sunburst.');
+    const model = form.get('model') ?? DEFAULT_IMAGE_MODEL;
+    if (!isImageModel(model)) throw new ImageInputError('Choose MAI Image 2.7 or GPT Image 2.5 Flare or Sunburst.');
     const output_format = choice(form, 'output_format', IMAGE_FORMATS, 'png');
     const background = choice(form, 'background', IMAGE_BACKGROUNDS, 'auto');
+    if (background === 'transparent' && isMaiImageModel(model)) {
+        throw new ImageInputError('MAI Image 2.7 does not support transparent backgrounds.');
+    }
     if (background === 'transparent' && output_format === 'jpeg') {
         throw new ImageInputError('Transparent backgrounds require PNG or WebP.');
     }

@@ -1,3 +1,5 @@
+import { isMaiImageModel } from '@/lib/cost-utils';
+import { clientInfo, logImageGeneration, type ImageGenerationLogEntry } from '@/lib/generation-log';
 import { IMAGE_REQUESTS_PER_MINUTE, ImageInputError, parseImageOptions } from '@/lib/image-options';
 import { createImageQuota } from '@/lib/image-quota';
 import crypto from 'crypto';
@@ -89,6 +91,9 @@ const config = {
 };
 
 const useCustomEndpoint = Boolean(process.env.AZURE_OPENAI_ENDPOINT);
+// MAI image models use their own gateway API (e.g. https://<apim>/<foundry-resource>/mai/v1).
+const maiImageEndpoint = process.env.MAI_IMAGE_ENDPOINT?.replace(/\/+$/, '');
+const maiImageApiKey = process.env.MAI_IMAGE_API_KEY || config.apiKey;
 const responseModel = process.env.AZURE_OPENAI_TEXT_MODEL || 'gpt-chat-latest';
 
 const outputDir = path.resolve(process.cwd(), 'generated-images');
@@ -156,13 +161,22 @@ async function persistGeneratedImage(
     b64_json: string,
     output_format: ValidOutputFormat,
     effectiveStorageMode: 'fs' | 'indexeddb',
-    outputCompression?: number
+    outputCompression?: number,
+    sourceFormat: 'png' | 'native' = 'native'
 ): Promise<SavedImageData> {
     // The gateway accepts PNG/JPEG only. Encode WebP locally from lossless PNG.
     if (output_format === 'webp') {
         b64_json = (
             await sharp(Buffer.from(b64_json, 'base64'))
                 .webp({ quality: outputCompression ?? 100 })
+                .toBuffer()
+        ).toString('base64');
+    } else if (output_format === 'jpeg' && sourceFormat === 'png') {
+        // MAI image models always return PNG.
+        b64_json = (
+            await sharp(Buffer.from(b64_json, 'base64'))
+                .flatten({ background: '#ffffff' })
+                .jpeg({ quality: Math.max(1, outputCompression ?? 100) })
                 .toBuffer()
         ).toString('base64');
     }
@@ -445,6 +459,110 @@ async function generateSingleImageWithPartialStreaming(
     };
 }
 
+const MAI_SIZES: Record<string, { width: number; height: number }> = {
+    auto: { width: 1024, height: 1024 },
+    '1024x1024': { width: 1024, height: 1024 },
+    '1536x1024': { width: 1536, height: 1024 },
+    '1024x1536': { width: 1024, height: 1536 }
+};
+
+type MaiImageOptions = Omit<GenerateImageOptions, 'apiClient' | 'inputContent' | 'imageGenTool'> & {
+    model: string;
+    prompt: string;
+    size: string;
+    references: File[];
+};
+
+type MaiImageResponse = {
+    data?: { b64_json?: string }[];
+    usage?: { num_input_text_tokens?: number; num_input_image_tokens?: number; num_output_tokens?: number };
+    error?: { message?: string };
+};
+
+async function generateMaiImage({
+    index,
+    model,
+    prompt,
+    size,
+    references,
+    timestamp,
+    fileExtension,
+    effectiveStorageMode,
+    signal,
+    outputCompression
+}: MaiImageOptions): Promise<GeneratedImageResult> {
+    if (!maiImageEndpoint || !maiImageApiKey) {
+        throw new Error('Server configuration error: MAI_IMAGE_ENDPOINT is not set.');
+    }
+    const { width, height } = MAI_SIZES[size] ?? MAI_SIZES.auto;
+    const headers: Record<string, string> = { 'api-key': maiImageApiKey };
+    let body: BodyInit;
+    let url: string;
+    if (references.length > 0) {
+        const form = new FormData();
+        form.set('model', model);
+        form.set('prompt', prompt);
+        form.set('width', String(width));
+        form.set('height', String(height));
+        // The MAI edits API reads every form field whose name starts with "image".
+        for (const reference of references) form.append('image', reference, reference.name || 'reference.png');
+        body = form;
+        url = `${maiImageEndpoint}/images/edits`;
+    } else {
+        headers['Content-Type'] = 'application/json';
+        body = JSON.stringify({ model, prompt, width, height });
+        url = `${maiImageEndpoint}/images/generations`;
+    }
+
+    const response = await fetch(url, { method: 'POST', headers, body, signal });
+    const text = await response.text();
+    let json: MaiImageResponse | undefined;
+    try {
+        json = JSON.parse(text) as MaiImageResponse;
+    } catch {
+        json = undefined;
+    }
+    if (!response.ok) {
+        throw OpenAI.APIError.generate(
+            response.status,
+            json?.error ?? { message: text.slice(0, 500) },
+            json?.error?.message ?? `MAI image request failed with status ${response.status}.`,
+            response.headers
+        );
+    }
+    const b64 = json?.data?.[0]?.b64_json;
+    if (!b64) throw new Error('No image was generated.');
+
+    const filename = `${timestamp}-${index}.${fileExtension}`;
+    const savedImage = await persistGeneratedImage(
+        filename,
+        b64,
+        fileExtension,
+        effectiveStorageMode,
+        outputCompression,
+        'png'
+    );
+    const usage = json?.usage;
+    return {
+        index,
+        savedImage,
+        usage: usage
+            ? {
+                  input_tokens: (usage.num_input_text_tokens ?? 0) + (usage.num_input_image_tokens ?? 0),
+                  output_tokens: usage.num_output_tokens,
+                  total_tokens:
+                      (usage.num_input_text_tokens ?? 0) +
+                      (usage.num_input_image_tokens ?? 0) +
+                      (usage.num_output_tokens ?? 0),
+                  input_tokens_details: {
+                      text_tokens: usage.num_input_text_tokens,
+                      image_tokens: usage.num_input_image_tokens
+                  }
+              }
+            : undefined
+    };
+}
+
 export async function POST(request: NextRequest) {
     console.log('Received POST request to /api/images');
 
@@ -452,6 +570,10 @@ export async function POST(request: NextRequest) {
         console.error('API key is not set.');
         return NextResponse.json({ error: 'Server configuration error: API key not found.' }, { status: 500 });
     }
+
+    let logGeneration:
+        | ((status: ImageGenerationLogEntry['status'], details?: Partial<ImageGenerationLogEntry>) => Promise<void>)
+        | undefined;
 
     try {
         let effectiveStorageMode: 'fs' | 'indexeddb';
@@ -489,9 +611,37 @@ export async function POST(request: NextRequest) {
         }
 
         const options = parseImageOptions(formData);
+        const startedAt = Date.now();
+        const logParsed = (status: ImageGenerationLogEntry['status'], details: Partial<ImageGenerationLogEntry> = {}) =>
+            logImageGeneration({
+                time: new Date(startedAt).toISOString(),
+                status,
+                model: options.model,
+                prompt: options.prompt,
+                n: options.n,
+                size: options.size,
+                quality: options.quality,
+                output_format: options.output_format,
+                background: options.background,
+                references: options.references.length,
+                streamed: options.stream,
+                completed: 0,
+                files: [],
+                duration_ms: Date.now() - startedAt,
+                ...clientInfo(request.headers),
+                ...details
+            });
+        logGeneration = logParsed;
         const { prompt, model, n, size, quality, output_format, background, partialImages, output_compression } =
             options;
-        const imageDeployment = useCustomEndpoint ? model : undefined;
+        const isMai = isMaiImageModel(model);
+        if (isMai && !maiImageEndpoint) {
+            return NextResponse.json(
+                { error: 'Server configuration error: MAI_IMAGE_ENDPOINT is not set.' },
+                { status: 500 }
+            );
+        }
+        const imageDeployment = useCustomEndpoint && !isMai ? model : undefined;
         const apiClient = createApiClient(imageDeployment);
 
         console.log(
@@ -499,7 +649,8 @@ export async function POST(request: NextRequest) {
         );
 
         const useStreaming = options.stream;
-        const usePartialImageStreaming = useStreaming && partialImages > 0;
+        // MAI image models return only final images, so they use server-streamed batch mode.
+        const usePartialImageStreaming = useStreaming && partialImages > 0 && !isMai;
 
         // Build the image generation tool with parameters
         const imageGenTool: OpenAI.Responses.Tool = {
@@ -518,7 +669,7 @@ export async function POST(request: NextRequest) {
 
         const imageFiles = options.references;
 
-        if (imageFiles.length > 0) {
+        if (imageFiles.length > 0 && !isMai) {
             // Build multimodal input with reference images + text prompt
             const imageContents: OpenAI.Responses.ResponseInputContent[] = [];
             for (const [index, file] of imageFiles.entries()) {
@@ -543,6 +694,7 @@ export async function POST(request: NextRequest) {
         const maxImages = n;
         const retryAfter = imageQuota.reserve(model, n);
         if (retryAfter) {
+            await logParsed('rate_limited', { error: `App limit; retry after ${retryAfter}s.` });
             return NextResponse.json(
                 {
                     error: `This app limits each model to ${IMAGE_REQUESTS_PER_MINUTE} image requests per minute. Wait ${retryAfter} seconds, or choose the other model.`,
@@ -551,9 +703,48 @@ export async function POST(request: NextRequest) {
                 { status: 429, headers: { 'Retry-After': String(retryAfter) } }
             );
         }
-        const recordQuotaFailures = (batch: SettledGenerationBatch) => {
+        const generateImage = (index: number, signal: AbortSignal) =>
+            isMai
+                ? generateMaiImage({
+                      index,
+                      model,
+                      prompt,
+                      size,
+                      references: imageFiles,
+                      timestamp,
+                      fileExtension,
+                      effectiveStorageMode,
+                      outputCompression: output_compression,
+                      signal
+                  })
+                : generateSingleImage({
+                      index,
+                      apiClient,
+                      inputContent,
+                      imageGenTool,
+                      timestamp,
+                      fileExtension,
+                      effectiveStorageMode,
+                      outputCompression: output_compression,
+                      signal
+                  });
+        const recordQuotaFailures = async (batch: SettledGenerationBatch, cancelled = request.signal.aborted) => {
             const retryAfter = Math.max(0, ...batch.failures.map((failure) => failure.retryAfter ?? 0));
             if (retryAfter) imageQuota.defer(model, retryAfter);
+            const status = cancelled
+                ? 'cancelled'
+                : batch.failures.length === 0
+                  ? 'ok'
+                  : batch.results.length > 0
+                    ? 'partial'
+                    : 'error';
+            await logParsed(status, {
+                completed: batch.results.length,
+                files: batch.results.map((result) => result.savedImage.filename),
+                ...(batch.failures.length > 0 && status !== 'cancelled'
+                    ? { error: formatFailureMessage(batch.failures, maxImages) }
+                    : {})
+            });
         };
 
         // Streaming response
@@ -659,7 +850,10 @@ export async function POST(request: NextRequest) {
                             );
 
                             const settledBatch = await settleGenerationTasks(generationTasks);
-                            recordQuotaFailures(settledBatch);
+                            await recordQuotaFailures(
+                                settledBatch,
+                                request.signal.aborted || upstreamController.signal.aborted
+                            );
 
                             if (closed) {
                                 return;
@@ -700,17 +894,7 @@ export async function POST(request: NextRequest) {
                             return;
                         } else {
                             const generationTasks = Array.from({ length: maxImages }, (_, index) =>
-                                generateSingleImage({
-                                    index,
-                                    apiClient,
-                                    inputContent,
-                                    imageGenTool,
-                                    timestamp,
-                                    fileExtension,
-                                    effectiveStorageMode,
-                                    outputCompression: output_compression,
-                                    signal: upstreamController.signal
-                                }).then((result) => {
+                                generateImage(index, upstreamController.signal).then((result) => {
                                     if (!closed) {
                                         safeEnqueue(
                                             encoder.encode(
@@ -727,7 +911,10 @@ export async function POST(request: NextRequest) {
                             );
 
                             const settledBatch = await settleGenerationTasks(generationTasks);
-                            recordQuotaFailures(settledBatch);
+                            await recordQuotaFailures(
+                                settledBatch,
+                                request.signal.aborted || upstreamController.signal.aborted
+                            );
 
                             if (closed) {
                                 return;
@@ -772,6 +959,9 @@ export async function POST(request: NextRequest) {
                         const isAbort = clientDisconnected || (error instanceof Error && error.name === 'AbortError');
                         if (!isAbort) {
                             console.error('Streaming error:', error);
+                            await logParsed('error', {
+                                error: error instanceof Error ? error.message : 'Unknown streaming error'
+                            });
                             safeEnqueue(
                                 encoder.encode(
                                     sseEvent({
@@ -808,21 +998,9 @@ export async function POST(request: NextRequest) {
 
         // Non-streaming response
         const settledBatch = await settleGenerationTasks(
-            Array.from({ length: maxImages }, (_, index) =>
-                generateSingleImage({
-                    index,
-                    apiClient,
-                    inputContent,
-                    imageGenTool,
-                    timestamp,
-                    fileExtension,
-                    effectiveStorageMode,
-                    outputCompression: output_compression,
-                    signal: request.signal
-                })
-            )
+            Array.from({ length: maxImages }, (_, index) => generateImage(index, request.signal))
         );
-        recordQuotaFailures(settledBatch);
+        await recordQuotaFailures(settledBatch);
 
         const savedImagesData = settledBatch.results.map((result) => result.savedImage);
         const failureMessage = formatFailureMessage(settledBatch.failures, maxImages);
@@ -855,6 +1033,9 @@ export async function POST(request: NextRequest) {
         });
     } catch (error: unknown) {
         console.error('Error in /api/images:', error);
+        if (logGeneration && !(error instanceof ImageInputError)) {
+            await logGeneration('error', { error: error instanceof Error ? error.message : String(error) });
+        }
 
         let errorMessage = 'An unexpected error occurred.';
         let status = error instanceof ImageInputError ? 400 : 500;

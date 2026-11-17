@@ -11,10 +11,26 @@ export const GPT_IMAGE_MODELS = ['gpt-image-2.5-flare', 'gpt-image-2.5-sunburst'
 
 export type GptImageModel = (typeof GPT_IMAGE_MODELS)[number];
 
-export const DEFAULT_GPT_IMAGE_MODEL: GptImageModel = 'gpt-image-2.5-flare';
+export const MAI_IMAGE_MODELS = ['MAI-Image-2.7'] as const;
+
+export type MaiImageModel = (typeof MAI_IMAGE_MODELS)[number];
+
+export type ImageModel = GptImageModel | MaiImageModel;
+
+export const IMAGE_MODELS: readonly ImageModel[] = [...MAI_IMAGE_MODELS, ...GPT_IMAGE_MODELS];
+
+export const DEFAULT_IMAGE_MODEL: ImageModel = 'MAI-Image-2.7';
 
 export function isGptImageModel(value: unknown): value is GptImageModel {
     return typeof value === 'string' && GPT_IMAGE_MODELS.includes(value as GptImageModel);
+}
+
+export function isMaiImageModel(value: unknown): value is MaiImageModel {
+    return typeof value === 'string' && MAI_IMAGE_MODELS.includes(value as MaiImageModel);
+}
+
+export function isImageModel(value: unknown): value is ImageModel {
+    return isGptImageModel(value) || isMaiImageModel(value);
 }
 
 // Pricing for Sora video
