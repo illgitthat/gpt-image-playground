@@ -2,6 +2,7 @@ import fs from 'fs/promises';
 import { lookup } from 'mime-types';
 import { NextRequest, NextResponse } from 'next/server';
 import path from 'path';
+import { findStoredImage } from '@/lib/stored-image';
 
 // Base directory where images are stored (outside gpt-image-playground)
 const imageBaseDir = path.resolve(/* turbopackIgnore: true */ process.cwd(), 'generated-images');
@@ -30,7 +31,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   }
 
   try {
-    const stat = await fs.stat(resolved);
+    const found = await findStoredImage(imageBaseDir, filename);
+    if (!found) {
+      return NextResponse.json({ error: 'Image not found' }, { status: 404 });
+    }
+    const { filepath: storedPath, stat } = found;
     // ETag based on file size + mtime (sufficient for immutable generated files).
     const etag = `"${stat.size.toString(16)}-${stat.mtimeMs.toString(16)}"`;
 
@@ -45,8 +50,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       });
     }
 
-    const fileBuffer = await fs.readFile(resolved);
-    const contentType = lookup(filename) || 'application/octet-stream';
+    const fileBuffer = await fs.readFile(storedPath);
+    const contentType = lookup(storedPath) || 'application/octet-stream';
 
     return new NextResponse(fileBuffer, {
       status: 200,

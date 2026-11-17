@@ -1,3 +1,4 @@
+import { findStoredImage } from '@/lib/stored-image';
 import crypto from 'crypto';
 import fs from 'fs/promises';
 import { NextRequest, NextResponse } from 'next/server';
@@ -68,9 +69,11 @@ export async function POST(request: NextRequest) {
             continue;
         }
 
-        const filepath = path.join(outputDir, filename);
+        let filepath = path.join(outputDir, filename);
 
         try {
+            const found = await findStoredImage(outputDir, filename);
+            if (found) filepath = found.filepath;
             await fs.unlink(filepath);
             console.log(`Successfully deleted image: ${filepath}`);
             deletionResults.push({ filename, success: true });
