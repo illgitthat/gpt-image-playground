@@ -74,33 +74,25 @@ type GenerationFormProps = {
     isCancelling: boolean;
 };
 
-const RadioItemWithIcon = ({
+// A full-width, tappable segment backed by a (visually hidden) radio for keyboard and screen readers.
+const SegmentedOption = ({
     value,
     id,
     label,
-    Icon,
-    disabled
+    Icon
 }: {
     value: string;
     id: string;
     label: string;
     Icon: React.ElementType;
-    disabled?: boolean;
 }) => (
-    <div className='flex items-center space-x-2'>
-        <RadioGroupItem
-            value={value}
-            id={id}
-            disabled={disabled}
-            className='border-input text-foreground data-[state=checked]:border-foreground data-[state=checked]:text-foreground'
-        />
-        <Label
-            htmlFor={id}
-            className={`text-foreground/90 flex items-center gap-2 text-base ${disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}>
-            <Icon className='text-muted-foreground h-5 w-5' />
-            {label}
-        </Label>
-    </div>
+    <Label
+        htmlFor={id}
+        className='border-border bg-background text-foreground/80 hover:bg-muted/40 has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-primary/10 has-[[data-state=checked]]:text-foreground has-[:focus-visible]:ring-ring flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-md border px-3 text-sm font-normal transition-colors has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-50 has-[:focus-visible]:ring-2'>
+        <RadioGroupItem value={value} id={id} className='sr-only' />
+        <Icon className='text-muted-foreground h-4 w-4 shrink-0' aria-hidden='true' />
+        <span>{label}</span>
+    </Label>
 );
 
 export function GenerationForm({
@@ -300,7 +292,7 @@ export function GenerationForm({
     };
 
     return (
-        <Card className='border-border bg-card flex w-full flex-col rounded-md border shadow-[0_1px_0_0_var(--border)] lg:h-full lg:overflow-hidden'>
+        <Card className='border-border bg-card flex w-full flex-col gap-0 rounded-md border py-0 shadow-[0_1px_0_0_var(--border)] lg:h-full lg:overflow-hidden'>
             <form onSubmit={handleSubmit} className='flex flex-1 flex-col lg:h-full lg:overflow-hidden'>
                 <CardContent className='flex-1 space-y-5 p-4 lg:overflow-y-auto'>
                     <div className='space-y-1.5'>
@@ -429,11 +421,12 @@ export function GenerationForm({
                                         : 'border-border text-muted-foreground hover:bg-muted/30 hover:text-foreground'
                                 } disabled:cursor-not-allowed disabled:opacity-50`}>
                                 <ImagePlus className='h-5 w-5' />
-                                <span>
+                                <span className='pointer-coarse:hidden'>
                                     {isDraggingOver ? 'Drop images here' : 'Drop, paste, or click to add images'}
                                 </span>
+                                <span className='hidden pointer-coarse:inline'>Tap to add images</span>
                                 <span className='text-muted-foreground/70 text-xs'>
-                                    PNG, JPEG, WebP · Ctrl+V to paste
+                                    PNG, JPEG, WebP<span className='pointer-coarse:hidden'> · Ctrl+V to paste</span>
                                 </span>
                             </button>
                         ) : (
@@ -528,9 +521,9 @@ export function GenerationForm({
                             value={String(n[0])}
                             onValueChange={(value) => setN([Number(value)])}
                             disabled={isLoading}
-                            className='flex gap-5'>
+                            className='grid grid-cols-2 gap-2'>
                             {Array.from({ length: MAX_IMAGES }, (_, index) => index + 1).map((count) => (
-                                <RadioItemWithIcon
+                                <SegmentedOption
                                     key={count}
                                     id={`count-${count}`}
                                     value={String(count)}
@@ -544,25 +537,25 @@ export function GenerationForm({
                         </p>
                     </div>
 
-                    <div className='space-y-3'>
+                    <div className='space-y-2'>
                         <Label className='text-foreground block'>Size</Label>
                         <RadioGroup
-                            value={size}
+                            aria-label='Image size'
+                            value={size === 'auto' ? '1024x1024' : size}
                             onValueChange={(value) => setSize(value as GenerationFormData['size'])}
                             disabled={isLoading}
-                            className='flex flex-wrap gap-x-5 gap-y-3'>
-                            <RadioItemWithIcon value='auto' id='size-auto' label='Auto' Icon={Sparkles} />
-                            <RadioItemWithIcon value='1024x1024' id='size-square' label='Square' Icon={Square} />
-                            <RadioItemWithIcon
+                            className='grid grid-cols-3 gap-2'>
+                            <SegmentedOption value='1024x1024' id='size-square' label='Square' Icon={Square} />
+                            <SegmentedOption
                                 value='1536x1024'
                                 id='size-landscape'
-                                label='Landscape'
+                                label='Wide'
                                 Icon={RectangleHorizontal}
                             />
-                            <RadioItemWithIcon
+                            <SegmentedOption
                                 value='1024x1536'
                                 id='size-portrait'
-                                label='Portrait'
+                                label='Tall'
                                 Icon={RectangleVertical}
                             />
                         </RadioGroup>

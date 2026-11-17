@@ -75,6 +75,7 @@ console.log(
 
 export default function HomePage() {
     const [mode, setMode] = React.useState<'generate' | 'video'>('generate');
+    const outputPanelRef = React.useRef<HTMLDivElement>(null);
     const [isPasswordRequiredByBackend, setIsPasswordRequiredByBackend] = React.useState<boolean | null>(null);
     const [clientPasswordHash, setClientPasswordHash] = React.useState<string | null>(null);
     const [isLoading, setIsLoading] = React.useState(false);
@@ -108,7 +109,7 @@ export default function HomePage() {
     }, []);
     const promptRequestId = React.useRef(0);
     const [genN, setGenN] = React.useState([1]);
-    const [genSize, setGenSize] = React.useState<GenerationFormData['size']>('auto');
+    const [genSize, setGenSize] = React.useState<GenerationFormData['size']>('1024x1024');
     const [genReferenceImages, setGenReferenceImages] = React.useState<File[]>([]);
     const [genReferenceImagePreviewUrls, setGenReferenceImagePreviewUrls] = React.useState<string[]>([]);
 
@@ -803,6 +804,10 @@ export default function HomePage() {
 
     const handleApiCall = async (formData: GenerationFormData) => {
         if (imageRequestRef.current) return;
+        // On stacked (mobile) layouts the result panel is below the form; bring it into view.
+        if (window.matchMedia('(max-width: 1023px)').matches) {
+            outputPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
         const startTime = Date.now();
         let durationMs = 0;
 
@@ -1355,10 +1360,10 @@ export default function HomePage() {
                             : ''}
             </div>
             <div className='w-full max-w-[1400px] space-y-8'>
-                <header className='rise-in border-border flex flex-col gap-6 border-b pb-6 lg:flex-row lg:items-end lg:justify-between'>
+                <header className='rise-in border-border flex items-center justify-between gap-4 border-b pb-4 sm:pb-6 lg:items-end'>
                     <div className='flex min-w-0 flex-col gap-3'>
-                        <h1 className='font-display text-foreground text-[clamp(1.5rem,8.2vw,1.875rem)] leading-[0.95] tracking-tight sm:text-5xl md:text-6xl lg:text-7xl'>
-                            gpt<span className='text-primary italic'>·image</span>
+                        <h1 className='font-display text-foreground text-[clamp(1.5rem,7.6vw,2.25rem)] leading-[0.95] tracking-tight sm:text-5xl md:text-6xl lg:text-7xl'>
+                            mai<span className='text-primary italic'>·image</span>
                             <span className='text-muted-foreground'>/</span>playground
                         </h1>
                     </div>
@@ -1425,7 +1430,9 @@ export default function HomePage() {
                         </div>
                         */}
                     </div>
-                    <div className='flex min-h-[360px] flex-col lg:col-span-1 lg:h-[70vh] lg:min-h-[600px]'>
+                    <div
+                        ref={outputPanelRef}
+                        className='flex min-h-[360px] scroll-mt-4 flex-col lg:col-span-1 lg:h-[70vh] lg:min-h-[600px]'>
                         {error && (
                             <Alert
                                 variant='destructive'
