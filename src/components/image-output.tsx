@@ -34,9 +34,15 @@ function formatElapsed(seconds: number): string {
     return m > 0 ? `${m}:${s.toString().padStart(2, '0')}` : `${s}s`;
 }
 
+// MAI returns no partial previews; typical generations take about this long.
+const TYPICAL_GENERATION_SECONDS = 25;
+
 function GenerationLoader({ elapsedSeconds, status }: { elapsedSeconds: number; status: string }) {
+    // Ease toward 95% so the bar never claims to be done before the image arrives.
+    const progress = Math.min(95, 100 * (1 - Math.exp(-elapsedSeconds / (TYPICAL_GENERATION_SECONDS / 2))));
+    const overdue = elapsedSeconds > TYPICAL_GENERATION_SECONDS * 1.6;
     return (
-        <div className='flex flex-col items-center justify-center gap-4'>
+        <div className='flex w-full max-w-xs flex-col items-center justify-center gap-4'>
             {/* Elapsed time with spinner */}
             <div className='relative flex h-20 w-20 items-center justify-center'>
                 <Loader2 className='text-primary/20 absolute h-16 w-16 animate-spin' />
@@ -48,6 +54,23 @@ function GenerationLoader({ elapsedSeconds, status }: { elapsedSeconds: number; 
             <p role='status' className='text-foreground/90 text-sm font-medium'>
                 {status}
             </p>
+            <div className='w-full space-y-2'>
+                <div
+                    className='bg-muted h-1 w-full overflow-hidden rounded-full'
+                    role='progressbar'
+                    aria-label='Estimated progress'
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={Math.round(progress)}>
+                    <div
+                        className='bg-primary h-full rounded-full transition-[width] duration-1000 ease-linear'
+                        style={{ width: `${progress}%` }}
+                    />
+                </div>
+                <p className='text-muted-foreground text-center text-xs'>
+                    {overdue ? 'Taking longer than usual…' : `Usually about ${TYPICAL_GENERATION_SECONDS} seconds`}
+                </p>
+            </div>
         </div>
     );
 }

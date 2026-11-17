@@ -21,8 +21,8 @@ const instrumentSerif = Instrument_Serif({
 });
 
 export const metadata: Metadata = {
-    title: 'GPT Image Playground',
-    description: "Generate and edit images using OpenAI's GPT Image models.",
+    title: 'MAI Image Playground',
+    description: 'Generate and edit images with MAI Image 2.7.',
     icons: {
         icon: '/favicon.svg'
     }

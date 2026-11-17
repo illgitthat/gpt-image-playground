@@ -286,14 +286,13 @@ export function HistoryPanel({
                                                     {item.videoSeconds ? `${item.videoSeconds}s` : '—'}
                                                 </p>
                                             </>
-                                        ) : (
-                                            <>
-                                                <p>
-                                                    <span className='text-foreground/90 font-medium'>Quality:</span>{' '}
-                                                    {item.quality}
-                                                </p>
-                                            </>
-                                        )}
+                                        ) : item.quality && item.quality !== 'auto' ? (
+                                            // Older GPT Image entries; MAI has no quality setting.
+                                            <p>
+                                                <span className='text-foreground/90 font-medium'>Quality:</span>{' '}
+                                                {item.quality}
+                                            </p>
+                                        ) : null}
                                         {referenceFilenames.length > 0 && (
                                             <div className='mt-1.5'>
                                                 <div className='flex items-center gap-2'>
