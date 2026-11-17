@@ -25,7 +25,8 @@ export async function downloadImage(url: string, filename: string): Promise<void
     const link = document.createElement('a');
     try {
         link.href = blobUrl;
-        link.download = filename;
+        // Recompressed history images keep their old .png names but are served as WebP.
+        link.download = blob.type === 'image/webp' ? filename.replace(/\.png$/i, '.webp') : filename;
         document.body.appendChild(link);
         link.click();
     } finally {
