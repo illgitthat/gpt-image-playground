@@ -108,6 +108,8 @@ const savedEnv = { ...process.env };
 const logDir = fs.mkdtempSync(path.join(os.tmpdir(), 'image-log-'));
 const logFile = path.join(logDir, 'generations.jsonl');
 process.env.IMAGE_LOG_FILE = logFile;
+process.env.IMAGE_LIMIT_PER_IP_HOUR = '0';
+process.env.IMAGE_LIMIT_PER_IP_DAY = '0';
 const logEntries = () =>
     fs.existsSync(logFile)
         ? fs
@@ -400,5 +402,33 @@ describe('image route', () => {
         expect(entries.map((entry) => entry.status)).toEqual(['partial', 'rate_limited']);
         expect(entries[0].completed).toBe(1);
         expect(entries[0].error).toContain('75 seconds');
+    });
+
+    test('enforces the per-IP image cap before any upstream request and logs it', async () => {
+        process.env.IMAGE_LIMIT_PER_IP_HOUR = '2';
+        try {
+            const sendFrom = (ip: string, n: string) => {
+                const body = new FormData();
+                body.set('prompt', 'A red fox in snow');
+                body.set('n', n);
+                return POST(
+                    new NextRequest('http://localhost/api/images', {
+                        method: 'POST',
+                        body,
+                        headers: { 'x-real-ip': ip }
+                    })
+                );
+            };
+            expect((await sendFrom('198.51.100.9', '2')).status).toBe(200);
+            now += 120_000;
+            const limited = await sendFrom('198.51.100.9', '1');
+            expect(limited.status).toBe(429);
+            expect((await limited.json()).error).toContain('2 images per hour');
+            expect(maiRequests).toHaveLength(2);
+            expect(logEntries().at(-1)).toMatchObject({ status: 'rate_limited', ip: '198.51.100.9' });
+            expect((await sendFrom('198.51.100.10', '1')).status).toBe(200);
+        } finally {
+            process.env.IMAGE_LIMIT_PER_IP_HOUR = '0';
+        }
     });
 });

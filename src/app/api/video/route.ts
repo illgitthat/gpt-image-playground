@@ -1,5 +1,7 @@
 import crypto from 'crypto';
 import fs from 'fs/promises';
+import { clientInfo } from '@/lib/generation-log';
+import { ipLimiter } from '@/lib/ip-limit';
 import { NextRequest, NextResponse } from 'next/server';
 import path from 'path';
 import sharp from 'sharp';
@@ -115,6 +117,14 @@ export async function POST(request: NextRequest) {
             if (clientPasswordHash !== serverPasswordHash) {
                 return NextResponse.json({ error: 'Unauthorized: Invalid password.' }, { status: 401 });
             }
+        }
+
+        const ipLimit = ipLimiter.take('video', clientInfo(request.headers).ip);
+        if (!ipLimit.allowed) {
+            return NextResponse.json(
+                { error: ipLimit.message, retryAfter: ipLimit.retryAfter },
+                { status: 429, headers: { 'Retry-After': String(ipLimit.retryAfter) } }
+            );
         }
 
         const prompt = (formData.get('prompt') as string | null)?.trim();
