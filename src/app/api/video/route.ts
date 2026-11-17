@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import path from 'path';
 import sharp from 'sharp';
 
-const outputDir = path.resolve(process.cwd(), 'generated-images');
+const outputDir = path.resolve(/* turbopackIgnore: true */ process.cwd(), 'generated-images');
 
 const config = {
     apiKey: process.env.AZURE_OPENAI_API_KEY || process.env.OPENAI_API_KEY,

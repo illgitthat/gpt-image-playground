@@ -25,7 +25,7 @@ export type ImageGenerationLogEntry = {
 function logFilePath(): string | null {
     const configured = process.env.IMAGE_LOG_FILE?.trim();
     if (configured === 'off') return null;
-    return path.resolve(process.cwd(), configured || 'logs/image-generations.jsonl');
+    return path.resolve(/* turbopackIgnore: true */ process.cwd(), configured || 'logs/image-generations.jsonl');
 }
 
 export function clientInfo(headers: Headers): { ip?: string; user_agent?: string } {

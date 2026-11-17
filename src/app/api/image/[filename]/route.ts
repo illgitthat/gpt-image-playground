@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import path from 'path';
 
 // Base directory where images are stored (outside gpt-image-playground)
-const imageBaseDir = path.resolve(process.cwd(), 'generated-images');
+const imageBaseDir = path.resolve(/* turbopackIgnore: true */ process.cwd(), 'generated-images');
 
 // Generated image filenames embed a timestamp + index and are immutable once written.
 const IMMUTABLE_CACHE_CONTROL = 'public, max-age=31536000, immutable';

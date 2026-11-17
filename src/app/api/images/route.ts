@@ -96,7 +96,7 @@ const maiImageEndpoint = process.env.MAI_IMAGE_ENDPOINT?.replace(/\/+$/, '');
 const maiImageApiKey = process.env.MAI_IMAGE_API_KEY || config.apiKey;
 const responseModel = process.env.AZURE_OPENAI_TEXT_MODEL || 'gpt-chat-latest';
 
-const outputDir = path.resolve(process.cwd(), 'generated-images');
+const outputDir = path.resolve(/* turbopackIgnore: true */ process.cwd(), 'generated-images');
 const imageQuota = createImageQuota();
 
 const VALID_OUTPUT_FORMATS = ['png', 'jpeg', 'webp'] as const;
