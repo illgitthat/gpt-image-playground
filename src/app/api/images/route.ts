@@ -2,6 +2,7 @@ import { isMaiImageModel } from '@/lib/cost-utils';
 import { clientInfo, logImageGeneration, type ImageGenerationLogEntry } from '@/lib/generation-log';
 import { IMAGE_REQUESTS_PER_MINUTE, ImageInputError, parseImageOptions } from '@/lib/image-options';
 import { createImageQuota } from '@/lib/image-quota';
+import { ipLimiter } from '@/lib/ip-limit';
 import crypto from 'crypto';
 import fs from 'fs/promises';
 import { NextRequest, NextResponse } from 'next/server';
@@ -692,6 +693,15 @@ export async function POST(request: NextRequest) {
         const timestamp = `${Date.now()}-${crypto.randomUUID()}`;
         const fileExtension = validateOutputFormat(output_format);
         const maxImages = n;
+        const client = clientInfo(request.headers);
+        const ipLimit = ipLimiter.take('image', client.ip, n);
+        if (!ipLimit.allowed) {
+            await logParsed('rate_limited', { error: ipLimit.message });
+            return NextResponse.json(
+                { error: ipLimit.message, retryAfter: ipLimit.retryAfter },
+                { status: 429, headers: { 'Retry-After': String(ipLimit.retryAfter) } }
+            );
+        }
         const retryAfter = imageQuota.reserve(model, n);
         if (retryAfter) {
             await logParsed('rate_limited', { error: `App limit; retry after ${retryAfter}s.` });

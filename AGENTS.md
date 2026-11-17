@@ -222,6 +222,10 @@ for await (const event of response) {
 - Responses usage currently describes the text orchestrator, not image-token usage. Do not price those output tokens as image tokens.
 - Follow https://developers.openai.com/api/docs/guides/image-prompting and the local `prompt-guide.md` when changing image prompts.
 
+### Per-IP limits
+
+- `src/lib/ip-limit.ts` caps usage per client IP (from `X-Real-IP`): images 60/hour and 250/day, prompt tools 120/hour, video 5/day. Each is overridable via env (`IMAGE_LIMIT_PER_IP_HOUR`, `IMAGE_LIMIT_PER_IP_DAY`, `TEXT_LIMIT_PER_IP_HOUR`, `VIDEO_LIMIT_PER_IP_DAY`; `0` disables). Counters are in memory and reset on restart. Rejections return 429 with `Retry-After`, and image rejections are logged as `rate_limited`.
+
 ### Request log
 
 - `/api/images` appends one JSON line per request to `IMAGE_LOG_FILE` (default `logs/image-generations.jsonl`, gitignored; `off` disables it). It records status (`ok`/`partial`/`error`/`cancelled`/`rate_limited`), model, prompt, settings, reference count, completed count, filenames, duration, and client IP from `X-Real-IP`. Invalid input is not logged. Log write failures are swallowed.
