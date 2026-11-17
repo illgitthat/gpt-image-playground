@@ -1,14 +1,14 @@
-import type { GptImageModel } from './cost-utils';
+import type { ImageModel } from './cost-utils';
 import { IMAGE_REQUESTS_PER_MINUTE } from './image-options';
 
 const WINDOW_MS = 60_000;
 
 // This guards a single server process; the gateway remains the quota authority.
 export function createImageQuota() {
-    const starts = new Map<GptImageModel, number[]>();
-    const blockedUntil = new Map<GptImageModel, number>();
+    const starts = new Map<ImageModel, number[]>();
+    const blockedUntil = new Map<ImageModel, number>();
     return {
-        reserve(model: GptImageModel, count: number, now = Date.now()): number {
+        reserve(model: ImageModel, count: number, now = Date.now()): number {
             if (!Number.isInteger(count) || count < 1 || count > IMAGE_REQUESTS_PER_MINUTE) {
                 throw new RangeError(`Reserve between 1 and ${IMAGE_REQUESTS_PER_MINUTE} image requests.`);
             }
@@ -24,7 +24,7 @@ export function createImageQuota() {
             starts.set(model, [...recent, ...Array<number>(count).fill(now)]);
             return 0;
         },
-        defer(model: GptImageModel, retryAfterSeconds: number, now = Date.now()) {
+        defer(model: ImageModel, retryAfterSeconds: number, now = Date.now()) {
             if (!Number.isFinite(retryAfterSeconds) || retryAfterSeconds <= 0) {
                 throw new RangeError('Retry delay must be a positive number of seconds.');
             }

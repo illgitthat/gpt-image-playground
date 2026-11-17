@@ -1,6 +1,6 @@
 # GPT Image Playground
 
-Generate and edit images with GPT Image 2.5 Flare and Sunburst, using reference images, prompt enhancement, and local history.
+Generate and edit images with MAI Image 2.7 (default) or GPT Image 2.5 Flare and Sunburst, using reference images, prompt enhancement, and local history.
 
 ![The playground with Flare selected and a generated image](./readme-images/interface.jpg)
 
@@ -42,6 +42,7 @@ The gateway must support the `x-ms-oai-image-generation-deployment` header and h
 
 | Optional setting | Purpose |
 | --- | --- |
+| `MAI_IMAGE_ENDPOINT` | MAI image API base ending in `/mai/v1`, required for the default MAI Image 2.7 model. Uses `AZURE_OPENAI_API_KEY` unless `MAI_IMAGE_API_KEY` is set. |
 | `AZURE_OPENAI_TEXT_MODEL` | Text model for image orchestration and prompt tools. Defaults to `gpt-chat-latest`; choose a model available at your endpoint. |
 | `OPENAI_API_BASE_URL` | Custom base URL for OpenAI-compatible connections. |
 | `APP_PASSWORD` | Require a shared password. |
@@ -51,7 +52,7 @@ Reference images and history are stored in the browser. Use `indexeddb` on hosts
 
 ## Using the playground
 
-Choose **Flare** for faster generation or **Sunburst** for higher quality. Enter a prompt, select your output settings, and generate. You can download results or reuse them as references.
+**MAI 2.7** is the default. Choose **Flare** for faster generation or **Sunburst** for higher quality (and transparent backgrounds). Enter a prompt, select your output settings, and generate. You can download results or reuse them as references.
 
 For edits, add images by dropping, pasting, or uploading them. Refer to them by number and state what should change:
 

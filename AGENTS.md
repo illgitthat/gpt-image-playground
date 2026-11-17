@@ -201,6 +201,14 @@ for await (const event of response) {
 
 **Note**: The legacy `/images/generations` endpoint is NOT available on this gateway. Streaming must use the Responses API.
 
+### MAI Image 2.7 (default model)
+
+- `MAI-Image-2.7` is called directly, not through the Responses API: `POST {MAI_IMAGE_ENDPOINT}/images/generations` with JSON `{ model, prompt, width, height }`, or multipart `POST {MAI_IMAGE_ENDPOINT}/images/edits` when reference images are attached (one `image` field per reference). Auth is the same `api-key` header (`MAI_IMAGE_API_KEY` overrides it).
+- `MAI_IMAGE_ENDPOINT` is the gateway path ending in `/mai/v1`, e.g. `https://ab-foundry-aigateway.azure-api.net/abloom-eu-not2-foundry-resource/mai/v1`.
+- One image per call (`n` is ignored upstream), so the app makes `n` parallel calls. Width and height must each be at least 768.
+- It always returns PNG and ignores `output_format`. The app encodes JPEG/WebP locally with Sharp.
+- It has no quality setting, no transparent backgrounds, and no partial-image streaming. With streaming enabled, it uses server-streamed batch mode.
+
 ### GPT Image 2.5 gateway constraints
 
 - Supported deployments: `gpt-image-2.5-flare` (default) and `gpt-image-2.5-sunburst`.
@@ -280,3 +288,13 @@ const enhancedPrompt = response.output_text;
 ### TypeScript Errors
 - Use `ResponseInputContent` and `ResponseInputItem` types from `OpenAI.Responses`
 - Image generation output items have `type === 'image_generation_call'` with `result` property
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+## This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->
