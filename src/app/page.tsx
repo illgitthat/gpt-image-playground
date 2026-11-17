@@ -111,8 +111,8 @@ export default function HomePage() {
     const [genN, setGenN] = React.useState([1]);
     const [genSize, setGenSize] = React.useState<GenerationFormData['size']>('auto');
     const [genQuality, setGenQuality] = React.useState<GenerationFormData['quality']>('low');
-    const [genOutputFormat, setGenOutputFormat] = React.useState<GenerationFormData['output_format']>('png');
-    const [genCompression, setGenCompression] = React.useState([100]);
+    const [genOutputFormat, setGenOutputFormat] = React.useState<GenerationFormData['output_format']>('webp');
+    const [genCompression, setGenCompression] = React.useState([85]);
     const [genBackground, setGenBackground] = React.useState<GenerationFormData['background']>('auto');
     const [genReferenceImages, setGenReferenceImages] = React.useState<File[]>([]);
     const [genReferenceImagePreviewUrls, setGenReferenceImagePreviewUrls] = React.useState<string[]>([]);
