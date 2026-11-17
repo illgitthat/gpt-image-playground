@@ -17,7 +17,7 @@ import {
 } from '@/components/ui/dialog';
 import { VideoForm, type VideoFormData } from '@/components/video-form';
 import { VideoOutput } from '@/components/video-output';
-import { DEFAULT_IMAGE_MODEL, calculateSoraVideoCost, type CostDetails, type ImageModel } from '@/lib/cost-utils';
+import { calculateSoraVideoCost, type CostDetails, type ImageModel } from '@/lib/cost-utils';
 import { db, type ImageRecord } from '@/lib/db';
 import { compressImageForUpload } from '@/lib/image-compress';
 import { MAX_REFERENCE_IMAGES } from '@/lib/image-options';
@@ -101,7 +101,6 @@ export default function HomePage() {
 
     const allDbImages = useLiveQuery<ImageRecord[] | undefined>(() => db.images.toArray(), []);
 
-    const [genModel, setGenModel] = React.useState<GenerationFormData['model']>(DEFAULT_IMAGE_MODEL);
     const [genPromptDraft, dispatchGenPrompt] = React.useReducer(promptDraftReducer, EMPTY_PROMPT_DRAFT);
     const genPrompt = genPromptDraft.text;
     const setGenPrompt = React.useCallback((value: React.SetStateAction<string>) => {
@@ -110,10 +109,6 @@ export default function HomePage() {
     const promptRequestId = React.useRef(0);
     const [genN, setGenN] = React.useState([1]);
     const [genSize, setGenSize] = React.useState<GenerationFormData['size']>('auto');
-    const [genQuality, setGenQuality] = React.useState<GenerationFormData['quality']>('low');
-    const [genOutputFormat, setGenOutputFormat] = React.useState<GenerationFormData['output_format']>('webp');
-    const [genCompression, setGenCompression] = React.useState([85]);
-    const [genBackground, setGenBackground] = React.useState<GenerationFormData['background']>('auto');
     const [genReferenceImages, setGenReferenceImages] = React.useState<File[]>([]);
     const [genReferenceImagePreviewUrls, setGenReferenceImagePreviewUrls] = React.useState<string[]>([]);
 
@@ -1380,22 +1375,12 @@ export default function HomePage() {
                                 isPasswordRequiredByBackend={isPasswordRequiredByBackend}
                                 clientPasswordHash={clientPasswordHash}
                                 onOpenPasswordDialog={handleOpenPasswordDialog}
-                                model={genModel}
-                                setModel={setGenModel}
                                 prompt={genPrompt}
                                 setPrompt={setGenPrompt}
                                 n={genN}
                                 setN={setGenN}
                                 size={genSize}
                                 setSize={setGenSize}
-                                quality={genQuality}
-                                setQuality={setGenQuality}
-                                outputFormat={genOutputFormat}
-                                setOutputFormat={setGenOutputFormat}
-                                compression={genCompression}
-                                setCompression={setGenCompression}
-                                background={genBackground}
-                                setBackground={setGenBackground}
                                 referenceImages={genReferenceImages}
                                 referenceImagePreviewUrls={genReferenceImagePreviewUrls}
                                 setReferenceImages={setGenReferenceImages}

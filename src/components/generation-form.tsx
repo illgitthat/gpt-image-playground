@@ -5,24 +5,19 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Slider } from '@/components/ui/slider';
 import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { isMaiImageModel, type ImageModel } from '@/lib/cost-utils';
+import { DEFAULT_IMAGE_MODEL, type ImageModel } from '@/lib/cost-utils';
 import { compressImagesForUpload } from '@/lib/image-compress';
-import { IMAGE_REQUESTS_PER_MINUTE, MAX_IMAGES } from '@/lib/image-options';
+import { DEFAULT_OUTPUT_COMPRESSION, IMAGE_REQUESTS_PER_MINUTE, MAX_IMAGES } from '@/lib/image-options';
 import {
     Square,
     RectangleHorizontal,
     RectangleVertical,
     Sparkles,
-    Eraser,
-    FileImage,
     Tally1,
     Tally2,
-    Tally3,
     Loader2,
-    BrickWall,
     Lock,
     LockOpen,
     Wand2,
@@ -34,6 +29,8 @@ import {
 } from 'lucide-react';
 import Image from 'next/image';
 import * as React from 'react';
+
+export const DEFAULT_OUTPUT_FORMAT = 'webp' as const;
 
 export type GenerationFormData = {
     prompt: string;
@@ -54,22 +51,12 @@ type GenerationFormProps = {
     isPasswordRequiredByBackend: boolean | null;
     clientPasswordHash: string | null;
     onOpenPasswordDialog: () => void;
-    model: GenerationFormData['model'];
-    setModel: React.Dispatch<React.SetStateAction<GenerationFormData['model']>>;
     prompt: string;
     setPrompt: React.Dispatch<React.SetStateAction<string>>;
     n: number[];
     setN: React.Dispatch<React.SetStateAction<number[]>>;
     size: GenerationFormData['size'];
     setSize: React.Dispatch<React.SetStateAction<GenerationFormData['size']>>;
-    quality: GenerationFormData['quality'];
-    setQuality: React.Dispatch<React.SetStateAction<GenerationFormData['quality']>>;
-    outputFormat: GenerationFormData['output_format'];
-    setOutputFormat: React.Dispatch<React.SetStateAction<GenerationFormData['output_format']>>;
-    compression: number[];
-    setCompression: React.Dispatch<React.SetStateAction<number[]>>;
-    background: GenerationFormData['background'];
-    setBackground: React.Dispatch<React.SetStateAction<GenerationFormData['background']>>;
     referenceImages: File[];
     referenceImagePreviewUrls: string[];
     setReferenceImages: React.Dispatch<React.SetStateAction<File[]>>;
@@ -122,22 +109,12 @@ export function GenerationForm({
     isPasswordRequiredByBackend,
     clientPasswordHash,
     onOpenPasswordDialog,
-    model,
-    setModel,
     prompt,
     setPrompt,
     n,
     setN,
     size,
     setSize,
-    quality,
-    setQuality,
-    outputFormat,
-    setOutputFormat,
-    compression,
-    setCompression,
-    background,
-    setBackground,
     referenceImages,
     referenceImagePreviewUrls,
     setReferenceImages,
@@ -154,8 +131,6 @@ export function GenerationForm({
     onCancel,
     isCancelling
 }: GenerationFormProps) {
-    const showCompression = outputFormat === 'jpeg' || outputFormat === 'webp';
-    const isMai = isMaiImageModel(model);
     const [imageAddError, setImageAddError] = React.useState<string | null>(null);
     const [isPastingImage, setIsPastingImage] = React.useState(false);
     const [isDraggingOver, setIsDraggingOver] = React.useState(false);
@@ -172,10 +147,6 @@ export function GenerationForm({
             cancelledByUser.current = false;
         }
     }, [isLoading]);
-
-    React.useEffect(() => {
-        if (outputFormat === 'webp' && compression[0] === 0) setCompression([1]);
-    }, [outputFormat, compression, setCompression]);
 
     const lightboxMedia: LightboxMedia[] = React.useMemo(
         () =>
@@ -313,88 +284,25 @@ export function GenerationForm({
 
     const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
         event.preventDefault();
-        const formData: GenerationFormData = {
+        // Model and output settings are fixed defaults; the form only exposes prompt, references, count, and size.
+        onSubmit({
             prompt,
             n: n[0],
             size,
-            quality,
-            output_format: outputFormat,
-            background,
+            quality: 'auto',
+            output_format: DEFAULT_OUTPUT_FORMAT,
+            output_compression: DEFAULT_OUTPUT_COMPRESSION,
+            background: 'auto',
             moderation: 'low',
-            model,
+            model: DEFAULT_IMAGE_MODEL,
             referenceImages
-        };
-        if (showCompression) {
-            formData.output_compression = compression[0];
-        }
-        onSubmit(formData);
+        });
     };
 
     return (
         <Card className='border-border bg-card flex w-full flex-col rounded-md border shadow-[0_1px_0_0_var(--border)] lg:h-full lg:overflow-hidden'>
             <form onSubmit={handleSubmit} className='flex flex-1 flex-col lg:h-full lg:overflow-hidden'>
                 <CardContent className='flex-1 space-y-5 p-4 lg:overflow-y-auto'>
-                    <div className='space-y-2'>
-                        <Label className='text-foreground block'>Model</Label>
-                        <RadioGroup
-                            aria-label='Image model'
-                            value={model}
-                            onValueChange={(value) => {
-                                setModel(value as ImageModel);
-                                if (isMaiImageModel(value) && background === 'transparent') setBackground('auto');
-                            }}
-                            disabled={isLoading}
-                            className='grid grid-cols-3 gap-3'>
-                            <Label
-                                htmlFor='model-mai'
-                                className='border-border bg-background has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-primary/5 grid cursor-pointer grid-cols-[auto_1fr] items-center gap-x-2 gap-y-1 rounded-md border p-3'>
-                                <RadioGroupItem
-                                    value='MAI-Image-2.7'
-                                    id='model-mai'
-                                    aria-label='MAI 2.7'
-                                    aria-describedby='model-mai-description'
-                                />
-                                <span>MAI 2.7</span>
-                                <span
-                                    id='model-mai-description'
-                                    className='text-muted-foreground col-start-2 text-xs font-normal'>
-                                    Microsoft MAI
-                                </span>
-                            </Label>
-                            <Label
-                                htmlFor='model-flare'
-                                className='border-border bg-background has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-primary/5 grid cursor-pointer grid-cols-[auto_1fr] items-center gap-x-2 gap-y-1 rounded-md border p-3'>
-                                <RadioGroupItem
-                                    value='gpt-image-2.5-flare'
-                                    id='model-flare'
-                                    aria-label='Flare'
-                                    aria-describedby='model-flare-description'
-                                />
-                                <span>Flare</span>
-                                <span
-                                    id='model-flare-description'
-                                    className='text-muted-foreground col-start-2 text-xs font-normal'>
-                                    Faster generation
-                                </span>
-                            </Label>
-                            <Label
-                                htmlFor='model-sunburst'
-                                className='border-border bg-background has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-primary/5 grid cursor-pointer grid-cols-[auto_1fr] items-center gap-x-2 gap-y-1 rounded-md border p-3'>
-                                <RadioGroupItem
-                                    value='gpt-image-2.5-sunburst'
-                                    id='model-sunburst'
-                                    aria-label='Sunburst'
-                                    aria-describedby='model-sunburst-description'
-                                />
-                                <span>Sunburst</span>
-                                <span
-                                    id='model-sunburst-description'
-                                    className='text-muted-foreground col-start-2 text-xs font-normal'>
-                                    Higher quality
-                                </span>
-                            </Label>
-                        </RadioGroup>
-                    </div>
                     <div className='space-y-1.5'>
                         <div className='flex flex-wrap items-center justify-between gap-2'>
                             <Label htmlFor='prompt' className='text-foreground'>
@@ -632,7 +540,7 @@ export function GenerationForm({
                             ))}
                         </RadioGroup>
                         <p className='text-muted-foreground text-xs'>
-                            Up to {IMAGE_REQUESTS_PER_MINUTE} images per minute, per model.
+                            Up to {IMAGE_REQUESTS_PER_MINUTE} images per minute.
                         </p>
                     </div>
 
@@ -659,84 +567,6 @@ export function GenerationForm({
                             />
                         </RadioGroup>
                     </div>
-
-                    <div className='space-y-3'>
-                        <div>
-                            <Label className='text-foreground block'>Quality</Label>
-                            <span className='text-muted-foreground text-xs'>
-                                {isMai ? 'MAI 2.7 has no quality setting' : 'Higher quality takes longer to generate'}
-                            </span>
-                        </div>
-                        <RadioGroup
-                            value={quality}
-                            onValueChange={(value) => setQuality(value as GenerationFormData['quality'])}
-                            disabled={isLoading || isMai}
-                            className='flex flex-wrap gap-x-5 gap-y-3'>
-                            <RadioItemWithIcon value='auto' id='quality-auto' label='Auto' Icon={Sparkles} />
-                            <RadioItemWithIcon value='low' id='quality-low' label='Low' Icon={Tally1} />
-                            <RadioItemWithIcon value='medium' id='quality-medium' label='Medium' Icon={Tally2} />
-                            <RadioItemWithIcon value='high' id='quality-high' label='High' Icon={Tally3} />
-                        </RadioGroup>
-                    </div>
-
-                    <div className='space-y-3'>
-                        <Label className='text-foreground block'>Background</Label>
-                        <RadioGroup
-                            value={background}
-                            onValueChange={(value) => {
-                                setBackground(value as GenerationFormData['background']);
-                                if (value === 'transparent' && outputFormat === 'jpeg') setOutputFormat('png');
-                            }}
-                            disabled={isLoading}
-                            className='flex flex-wrap gap-x-5 gap-y-3'>
-                            <RadioItemWithIcon value='auto' id='bg-auto' label='Auto' Icon={Sparkles} />
-                            <RadioItemWithIcon value='opaque' id='bg-opaque' label='Opaque' Icon={BrickWall} />
-                            <RadioItemWithIcon
-                                value='transparent'
-                                id='bg-transparent'
-                                label='Transparent'
-                                Icon={Eraser}
-                                disabled={isMai}
-                            />
-                        </RadioGroup>
-                    </div>
-
-                    <div className='space-y-3'>
-                        <Label className='text-foreground block'>Output Format</Label>
-                        <RadioGroup
-                            value={outputFormat}
-                            onValueChange={(value) => setOutputFormat(value as GenerationFormData['output_format'])}
-                            disabled={isLoading}
-                            className='flex flex-wrap gap-x-5 gap-y-3'>
-                            <RadioItemWithIcon value='png' id='format-png' label='PNG' Icon={FileImage} />
-                            <RadioItemWithIcon
-                                value='jpeg'
-                                id='format-jpeg'
-                                label='JPEG'
-                                Icon={FileImage}
-                                disabled={background === 'transparent'}
-                            />
-                            <RadioItemWithIcon value='webp' id='format-webp' label='WebP' Icon={FileImage} />
-                        </RadioGroup>
-                    </div>
-
-                    {showCompression && (
-                        <div className='space-y-2 pt-2 transition-opacity duration-300'>
-                            <Label htmlFor='compression-slider' className='text-foreground'>
-                                Compression: {compression[0]}%
-                            </Label>
-                            <Slider
-                                id='compression-slider'
-                                min={outputFormat === 'webp' ? 1 : 0}
-                                max={100}
-                                step={1}
-                                value={compression}
-                                onValueChange={setCompression}
-                                disabled={isLoading}
-                                className='[&>button]:border-background [&>button]:bg-primary [&>span:first-child>span]:bg-primary mt-3 [&>button]:ring-offset-black [&>span:first-child]:h-1'
-                            />
-                        </div>
-                    )}
                 </CardContent>
                 <CardFooter className='border-border bg-muted/20 gap-2 border-t p-4'>
                     <Button
