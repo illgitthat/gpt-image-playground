@@ -45,3 +45,14 @@ describe('per-IP limiter', () => {
         expect(limiter.take('image', 'a', 1, 0).allowed).toBe(true);
     });
 });
+
+describe('limit keys', () => {
+    test('groups IPv6 by /64 and leaves IPv4 alone', async () => {
+        const { limitKeyForIp } = await import('../src/lib/generation-log');
+        expect(limitKeyForIp('2600:4040:7201:cb00:71ee:7caa:cbe5:640f')).toBe('2600:4040:7201:cb00::/64');
+        expect(limitKeyForIp('2600:4040:7201:cb00::1')).toBe('2600:4040:7201:cb00::/64');
+        expect(limitKeyForIp('2001:db8::1')).toBe('2001:db8:0:0::/64');
+        expect(limitKeyForIp('100.34.21.97')).toBe('100.34.21.97');
+        expect(limitKeyForIp(undefined)).toBeUndefined();
+    });
+});

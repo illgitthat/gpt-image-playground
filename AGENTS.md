@@ -222,9 +222,15 @@ for await (const event of response) {
 - Responses usage currently describes the text orchestrator, not image-token usage. Do not price those output tokens as image tokens.
 - Follow https://developers.openai.com/api/docs/guides/image-prompting and the local `prompt-guide.md` when changing image prompts.
 
+### Model and output defaults
+
+- The form exposes only prompt, reference images, count, and size. It always sends `MAI-Image-2.7`, WebP, quality 85, and an automatic background.
+- `ENABLED_IMAGE_MODELS` (comma list, default `MAI-Image-2.7`) is enforced in `parseImageOptions`. A disabled model is replaced with the first enabled one rather than rejected, so older open tabs keep working. MAI requests for transparency are treated as `auto`.
+- With no `output_format`, the server defaults to WebP with compression 85.
+
 ### Per-IP limits
 
-- `src/lib/ip-limit.ts` caps usage per client IP (from `X-Real-IP`): images 60/hour and 250/day, prompt tools 120/hour, video 5/day. Each is overridable via env (`IMAGE_LIMIT_PER_IP_HOUR`, `IMAGE_LIMIT_PER_IP_DAY`, `TEXT_LIMIT_PER_IP_HOUR`, `VIDEO_LIMIT_PER_IP_DAY`; `0` disables). Counters are in memory and reset on restart. Rejections return 429 with `Retry-After`, and image rejections are logged as `rate_limited`.
+- `src/lib/ip-limit.ts` caps usage per client IP (from `X-Real-IP`; IPv6 grouped by /64 via `limitKeyForIp`): images 60/hour and 250/day, prompt tools 120/hour, video 5/day. Each is overridable via env (`IMAGE_LIMIT_PER_IP_HOUR`, `IMAGE_LIMIT_PER_IP_DAY`, `TEXT_LIMIT_PER_IP_HOUR`, `VIDEO_LIMIT_PER_IP_DAY`; `0` disables). Counters are in memory and reset on restart. Rejections return 429 with `Retry-After`, and image rejections are logged as `rate_limited`.
 
 ### Request log
 

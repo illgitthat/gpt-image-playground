@@ -108,6 +108,7 @@ const savedEnv = { ...process.env };
 const logDir = fs.mkdtempSync(path.join(os.tmpdir(), 'image-log-'));
 const logFile = path.join(logDir, 'generations.jsonl');
 process.env.IMAGE_LOG_FILE = logFile;
+process.env.ENABLED_IMAGE_MODELS = 'MAI-Image-2.7,gpt-image-2.5-flare,gpt-image-2.5-sunburst';
 process.env.IMAGE_LIMIT_PER_IP_HOUR = '0';
 process.env.IMAGE_LIMIT_PER_IP_DAY = '0';
 const logEntries = () =>
@@ -150,6 +151,7 @@ function send(values: Record<string, string> = {}, references: File[] = [], sign
     const body = new FormData();
     body.set('prompt', 'Change only the leaf color. Keep everything else the same.');
     body.set('model', 'gpt-image-2.5-flare');
+    body.set('output_format', 'png');
     for (const [key, value] of Object.entries(values)) body.set(key, value);
     references.forEach((reference, i) => body.set(`image_${i}`, reference));
     return POST(new NextRequest('http://localhost/api/images', { method: 'POST', body, signal }));
@@ -308,7 +310,7 @@ describe('image route', () => {
         expect(response.status).toBe(200);
         const json = await response.json();
         expect(json.images).toHaveLength(1);
-        expect(json.images[0].output_format).toBe('png');
+        expect(json.images[0].output_format).toBe('webp');
         expect(requests).toHaveLength(0);
         expect(maiRequests).toHaveLength(1);
         expect(maiRequests[0].path).toBe('/mai/v1/images/generations');
@@ -361,9 +363,9 @@ describe('image route', () => {
         expect(maiRequests).toHaveLength(1);
     });
 
-    test('rejects transparent MAI backgrounds before any upstream request', async () => {
-        expect((await send({ model: 'MAI-Image-2.7', background: 'transparent' })).status).toBe(400);
-        expect(maiRequests).toHaveLength(0);
+    test('treats a transparent MAI request as auto instead of failing', async () => {
+        expect((await send({ model: 'MAI-Image-2.7', background: 'transparent' })).status).toBe(200);
+        expect(maiRequests).toHaveLength(1);
     });
 
     test('logs each generation with prompt, model, client IP, and saved files', async () => {

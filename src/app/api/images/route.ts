@@ -1,5 +1,5 @@
 import { isMaiImageModel } from '@/lib/cost-utils';
-import { clientInfo, logImageGeneration, type ImageGenerationLogEntry } from '@/lib/generation-log';
+import { clientInfo, limitKeyForIp, logImageGeneration, type ImageGenerationLogEntry } from '@/lib/generation-log';
 import { IMAGE_REQUESTS_PER_MINUTE, ImageInputError, parseImageOptions } from '@/lib/image-options';
 import { createImageQuota } from '@/lib/image-quota';
 import { ipLimiter } from '@/lib/ip-limit';
@@ -694,7 +694,7 @@ export async function POST(request: NextRequest) {
         const fileExtension = validateOutputFormat(output_format);
         const maxImages = n;
         const client = clientInfo(request.headers);
-        const ipLimit = ipLimiter.take('image', client.ip, n);
+        const ipLimit = ipLimiter.take('image', limitKeyForIp(client.ip), n);
         if (!ipLimit.allowed) {
             await logParsed('rate_limited', { error: ipLimit.message });
             return NextResponse.json(

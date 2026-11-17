@@ -1,6 +1,13 @@
 import { parseImageOptions } from '../src/lib/image-options';
 import { createImageQuota } from '../src/lib/image-quota';
-import { describe, expect, test } from 'bun:test';
+import { afterAll, describe, expect, test } from 'bun:test';
+
+const savedEnabled = process.env.ENABLED_IMAGE_MODELS;
+process.env.ENABLED_IMAGE_MODELS = 'MAI-Image-2.7,gpt-image-2.5-flare,gpt-image-2.5-sunburst';
+afterAll(() => {
+    if (savedEnabled === undefined) delete process.env.ENABLED_IMAGE_MODELS;
+    else process.env.ENABLED_IMAGE_MODELS = savedEnabled;
+});
 
 function form(values: Record<string, string> = {}) {
     const data = new FormData();
@@ -32,7 +39,23 @@ describe('image request options', () => {
         { output_format: 'webp', output_compression: '0' },
         { partial_images: '4' }
     ])('rejects unsupported settings %j', (values) => {
-        expect(() => parseImageOptions(form(values))).toThrow();
+        expect(() => parseImageOptions(form({ model: 'gpt-image-2.5-flare', ...values }))).toThrow();
+    });
+
+    test('serves disabled models with the default and drops transparency for MAI', () => {
+        const enabled = process.env.ENABLED_IMAGE_MODELS;
+        try {
+            delete process.env.ENABLED_IMAGE_MODELS;
+            const options = parseImageOptions(form({ model: 'gpt-image-2.5-sunburst', background: 'transparent' }));
+            expect(options.model).toBe('MAI-Image-2.7');
+            expect(options.background).toBe('auto');
+            expect(options.output_format).toBe('webp');
+            expect(options.output_compression).toBe(85);
+            process.env.ENABLED_IMAGE_MODELS = 'gpt-image-2.5-flare';
+            expect(parseImageOptions(form({ model: 'MAI-Image-2.7' })).model).toBe('gpt-image-2.5-flare');
+        } finally {
+            process.env.ENABLED_IMAGE_MODELS = enabled;
+        }
     });
 
     test('allows transparent WebP and preserves reference order', () => {

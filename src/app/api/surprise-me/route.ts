@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { clientInfo } from '@/lib/generation-log';
+import { clientInfo, limitKeyForIp } from '@/lib/generation-log';
 import { ipLimiter } from '@/lib/ip-limit';
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
             }
         }
 
-        const ipLimit = ipLimiter.take('text', clientInfo(request.headers).ip);
+        const ipLimit = ipLimiter.take('text', limitKeyForIp(clientInfo(request.headers).ip));
         if (!ipLimit.allowed) {
             return NextResponse.json(
                 { error: ipLimit.message, retryAfter: ipLimit.retryAfter },

@@ -46,6 +46,7 @@ The gateway must support the `x-ms-oai-image-generation-deployment` header and h
 | `AZURE_OPENAI_TEXT_MODEL` | Text model for image orchestration and prompt tools. Defaults to `gpt-chat-latest`; choose a model available at your endpoint. |
 | `OPENAI_API_BASE_URL` | Custom base URL for OpenAI-compatible connections. |
 | `APP_PASSWORD` | Require a shared password. |
+| `ENABLED_IMAGE_MODELS` | Comma-separated image models the server accepts (default `MAI-Image-2.7`). Requests for other models are served with the first enabled model. |
 | `IMAGE_LIMIT_PER_IP_HOUR` / `IMAGE_LIMIT_PER_IP_DAY` | Images each client IP may request (defaults 60 / 250; `0` disables). |
 | `TEXT_LIMIT_PER_IP_HOUR` | Prompt enhance + surprise-me calls per IP per hour (default 120). |
 | `VIDEO_LIMIT_PER_IP_DAY` | Video generations per IP per day (default 5). |
@@ -56,7 +57,7 @@ Reference images and history are stored in the browser. Use `indexeddb` on hosts
 
 ## Using the playground
 
-**MAI 2.7** is the default. Choose **Flare** for faster generation or **Sunburst** for higher quality (and transparent backgrounds). Enter a prompt, select your output settings, and generate. You can download results or reuse them as references.
+Images are generated with **MAI 2.7** as WebP (quality 85). The form only asks for a prompt, optional reference images, image count, and size. Set `ENABLED_IMAGE_MODELS` to re-enable GPT Image models for API callers. Enter a prompt, select your output settings, and generate. You can download results or reuse them as references.
 
 For edits, add images by dropping, pasting, or uploading them. Refer to them by number and state what should change:
 

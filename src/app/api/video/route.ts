@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import fs from 'fs/promises';
-import { clientInfo } from '@/lib/generation-log';
+import { clientInfo, limitKeyForIp } from '@/lib/generation-log';
 import { ipLimiter } from '@/lib/ip-limit';
 import { NextRequest, NextResponse } from 'next/server';
 import path from 'path';
@@ -119,7 +119,7 @@ export async function POST(request: NextRequest) {
             }
         }
 
-        const ipLimit = ipLimiter.take('video', clientInfo(request.headers).ip);
+        const ipLimit = ipLimiter.take('video', limitKeyForIp(clientInfo(request.headers).ip));
         if (!ipLimit.allowed) {
             return NextResponse.json(
                 { error: ipLimit.message, retryAfter: ipLimit.retryAfter },
