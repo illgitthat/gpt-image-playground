@@ -3,7 +3,7 @@ import fs from 'fs/promises';
 import { NextRequest, NextResponse } from 'next/server';
 import path from 'path';
 
-const outputDir = path.resolve(process.cwd(), 'generated-images');
+const outputDir = path.resolve(/* turbopackIgnore: true */ process.cwd(), 'generated-images');
 
 function sha256(data: string): string {
     return crypto.createHash('sha256').update(data).digest('hex');
