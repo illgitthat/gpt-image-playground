@@ -46,6 +46,7 @@ The gateway must support the `x-ms-oai-image-generation-deployment` header and h
 | `AZURE_OPENAI_TEXT_MODEL` | Text model for image orchestration and prompt tools. Defaults to `gpt-chat-latest`; choose a model available at your endpoint. |
 | `OPENAI_API_BASE_URL` | Custom base URL for OpenAI-compatible connections. |
 | `APP_PASSWORD` | Require a shared password. |
+| `IMAGE_LOG_FILE` | JSONL log of image requests (time, status, model, prompt, settings, client IP, files). Defaults to `logs/image-generations.jsonl`; set to `off` to disable. |
 | `NEXT_PUBLIC_IMAGE_STORAGE_MODE` | `fs` saves images in `generated-images/`; `indexeddb` saves them in the browser. Defaults to `fs` locally and `indexeddb` on Vercel. |
 
 Reference images and history are stored in the browser. Use `indexeddb` on hosts without persistent writable storage.

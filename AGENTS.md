@@ -222,6 +222,10 @@ for await (const event of response) {
 - Responses usage currently describes the text orchestrator, not image-token usage. Do not price those output tokens as image tokens.
 - Follow https://developers.openai.com/api/docs/guides/image-prompting and the local `prompt-guide.md` when changing image prompts.
 
+### Request log
+
+- `/api/images` appends one JSON line per request to `IMAGE_LOG_FILE` (default `logs/image-generations.jsonl`, gitignored; `off` disables it). It records status (`ok`/`partial`/`error`/`cancelled`/`rate_limited`), model, prompt, settings, reference count, completed count, filenames, duration, and client IP from `X-Real-IP`. Invalid input is not logged. Log write failures are swallowed.
+
 ### App image streaming
 
 - `/api/images` sends each final image once in a `completed` event, with its index and image payload.

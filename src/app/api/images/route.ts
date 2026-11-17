@@ -1,4 +1,5 @@
 import { isMaiImageModel } from '@/lib/cost-utils';
+import { clientInfo, logImageGeneration, type ImageGenerationLogEntry } from '@/lib/generation-log';
 import { IMAGE_REQUESTS_PER_MINUTE, ImageInputError, parseImageOptions } from '@/lib/image-options';
 import { createImageQuota } from '@/lib/image-quota';
 import crypto from 'crypto';
@@ -570,6 +571,10 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Server configuration error: API key not found.' }, { status: 500 });
     }
 
+    let logGeneration:
+        | ((status: ImageGenerationLogEntry['status'], details?: Partial<ImageGenerationLogEntry>) => Promise<void>)
+        | undefined;
+
     try {
         let effectiveStorageMode: 'fs' | 'indexeddb';
         const explicitMode = process.env.NEXT_PUBLIC_IMAGE_STORAGE_MODE;
@@ -606,6 +611,27 @@ export async function POST(request: NextRequest) {
         }
 
         const options = parseImageOptions(formData);
+        const startedAt = Date.now();
+        const logParsed = (status: ImageGenerationLogEntry['status'], details: Partial<ImageGenerationLogEntry> = {}) =>
+            logImageGeneration({
+                time: new Date(startedAt).toISOString(),
+                status,
+                model: options.model,
+                prompt: options.prompt,
+                n: options.n,
+                size: options.size,
+                quality: options.quality,
+                output_format: options.output_format,
+                background: options.background,
+                references: options.references.length,
+                streamed: options.stream,
+                completed: 0,
+                files: [],
+                duration_ms: Date.now() - startedAt,
+                ...clientInfo(request.headers),
+                ...details
+            });
+        logGeneration = logParsed;
         const { prompt, model, n, size, quality, output_format, background, partialImages, output_compression } =
             options;
         const isMai = isMaiImageModel(model);
@@ -668,6 +694,7 @@ export async function POST(request: NextRequest) {
         const maxImages = n;
         const retryAfter = imageQuota.reserve(model, n);
         if (retryAfter) {
+            await logParsed('rate_limited', { error: `App limit; retry after ${retryAfter}s.` });
             return NextResponse.json(
                 {
                     error: `This app limits each model to ${IMAGE_REQUESTS_PER_MINUTE} image requests per minute. Wait ${retryAfter} seconds, or choose the other model.`,
@@ -701,9 +728,23 @@ export async function POST(request: NextRequest) {
                       outputCompression: output_compression,
                       signal
                   });
-        const recordQuotaFailures = (batch: SettledGenerationBatch) => {
+        const recordQuotaFailures = async (batch: SettledGenerationBatch, cancelled = request.signal.aborted) => {
             const retryAfter = Math.max(0, ...batch.failures.map((failure) => failure.retryAfter ?? 0));
             if (retryAfter) imageQuota.defer(model, retryAfter);
+            const status = cancelled
+                ? 'cancelled'
+                : batch.failures.length === 0
+                  ? 'ok'
+                  : batch.results.length > 0
+                    ? 'partial'
+                    : 'error';
+            await logParsed(status, {
+                completed: batch.results.length,
+                files: batch.results.map((result) => result.savedImage.filename),
+                ...(batch.failures.length > 0 && status !== 'cancelled'
+                    ? { error: formatFailureMessage(batch.failures, maxImages) }
+                    : {})
+            });
         };
 
         // Streaming response
@@ -809,7 +850,10 @@ export async function POST(request: NextRequest) {
                             );
 
                             const settledBatch = await settleGenerationTasks(generationTasks);
-                            recordQuotaFailures(settledBatch);
+                            await recordQuotaFailures(
+                                settledBatch,
+                                request.signal.aborted || upstreamController.signal.aborted
+                            );
 
                             if (closed) {
                                 return;
@@ -867,7 +911,10 @@ export async function POST(request: NextRequest) {
                             );
 
                             const settledBatch = await settleGenerationTasks(generationTasks);
-                            recordQuotaFailures(settledBatch);
+                            await recordQuotaFailures(
+                                settledBatch,
+                                request.signal.aborted || upstreamController.signal.aborted
+                            );
 
                             if (closed) {
                                 return;
@@ -912,6 +959,9 @@ export async function POST(request: NextRequest) {
                         const isAbort = clientDisconnected || (error instanceof Error && error.name === 'AbortError');
                         if (!isAbort) {
                             console.error('Streaming error:', error);
+                            await logParsed('error', {
+                                error: error instanceof Error ? error.message : 'Unknown streaming error'
+                            });
                             safeEnqueue(
                                 encoder.encode(
                                     sseEvent({
@@ -950,7 +1000,7 @@ export async function POST(request: NextRequest) {
         const settledBatch = await settleGenerationTasks(
             Array.from({ length: maxImages }, (_, index) => generateImage(index, request.signal))
         );
-        recordQuotaFailures(settledBatch);
+        await recordQuotaFailures(settledBatch);
 
         const savedImagesData = settledBatch.results.map((result) => result.savedImage);
         const failureMessage = formatFailureMessage(settledBatch.failures, maxImages);
@@ -983,6 +1033,9 @@ export async function POST(request: NextRequest) {
         });
     } catch (error: unknown) {
         console.error('Error in /api/images:', error);
+        if (logGeneration && !(error instanceof ImageInputError)) {
+            await logGeneration('error', { error: error instanceof Error ? error.message : String(error) });
+        }
 
         let errorMessage = 'An unexpected error occurred.';
         let status = error instanceof ImageInputError ? 400 : 500;

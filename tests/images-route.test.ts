@@ -1,6 +1,9 @@
 import { readImageStream } from '../src/lib/image-stream';
 import { afterAll, beforeEach, describe, expect, spyOn, test } from 'bun:test';
+import fs from 'fs';
 import { NextRequest } from 'next/server';
+import os from 'os';
+import path from 'path';
 import sharp from 'sharp';
 
 type UpstreamRequest = {
@@ -102,6 +105,17 @@ const mai = Bun.serve({
 });
 
 const savedEnv = { ...process.env };
+const logDir = fs.mkdtempSync(path.join(os.tmpdir(), 'image-log-'));
+const logFile = path.join(logDir, 'generations.jsonl');
+process.env.IMAGE_LOG_FILE = logFile;
+const logEntries = () =>
+    fs.existsSync(logFile)
+        ? fs
+              .readFileSync(logFile, 'utf8')
+              .trim()
+              .split('\n')
+              .map((line) => JSON.parse(line))
+        : [];
 process.env.MAI_IMAGE_ENDPOINT = `${mai.url.toString()}mai/v1/`;
 process.env.AZURE_OPENAI_ENDPOINT = upstream.url.toString();
 process.env.AZURE_OPENAI_API_KEY = 'test-only';
@@ -117,6 +131,7 @@ beforeEach(() => {
     maiRequests = [];
     outcome = 'success';
     maiOutcome = 'success';
+    fs.rmSync(logFile, { force: true });
     onUpstreamAbort = undefined;
     now += 120_000;
 });
@@ -124,6 +139,7 @@ afterAll(() => {
     clock.mockRestore();
     upstream.stop(true);
     mai.stop(true);
+    fs.rmSync(logDir, { recursive: true, force: true });
     for (const key of Object.keys(process.env)) if (!(key in savedEnv)) delete process.env[key];
     Object.assign(process.env, savedEnv);
 });
@@ -346,5 +362,43 @@ describe('image route', () => {
     test('rejects transparent MAI backgrounds before any upstream request', async () => {
         expect((await send({ model: 'MAI-Image-2.7', background: 'transparent' })).status).toBe(400);
         expect(maiRequests).toHaveLength(0);
+    });
+
+    test('logs each generation with prompt, model, client IP, and saved files', async () => {
+        const body = new FormData();
+        body.set('prompt', 'A red fox in snow');
+        body.set('n', '2');
+        const response = await POST(
+            new NextRequest('http://localhost/api/images', {
+                method: 'POST',
+                body,
+                headers: { 'x-real-ip': '203.0.113.7', 'x-forwarded-for': '198.51.100.1, 10.0.0.1' }
+            })
+        );
+        expect(response.status).toBe(200);
+        const [entry] = logEntries();
+        expect(entry).toMatchObject({
+            status: 'ok',
+            model: 'MAI-Image-2.7',
+            prompt: 'A red fox in snow',
+            n: 2,
+            completed: 2,
+            references: 0,
+            streamed: false,
+            ip: '203.0.113.7'
+        });
+        expect(entry.files).toHaveLength(2);
+        expect(typeof entry.duration_ms).toBe('number');
+    });
+
+    test('logs partial failures, app rate limits, and skips invalid input', async () => {
+        outcome = 'partial-failure';
+        await (await send({ n: '2', stream: 'true' })).text();
+        await send();
+        await send({ n: '9' });
+        const entries = logEntries();
+        expect(entries.map((entry) => entry.status)).toEqual(['partial', 'rate_limited']);
+        expect(entries[0].completed).toBe(1);
+        expect(entries[0].error).toContain('75 seconds');
     });
 });
