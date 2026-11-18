@@ -71,8 +71,9 @@ export async function waitForVideo(
     const headers: Record<string, string> = passwordHash ? { 'x-password-hash': passwordHash } : {};
     const startedAt = Date.now();
     let networkFailures = 0;
-    for (;;) {
-        await sleep(interval, signal);
+    for (let first = true; ; first = false) {
+        // Check straight away, so a video that finished while the page was closed shows at once.
+        if (!first) await sleep(interval, signal);
         let response: Response;
         try {
             response = await fetch(`/api/video?jobId=${encodeURIComponent(jobId)}`, { headers, signal });
@@ -105,4 +106,59 @@ export function cancelVideoJob(jobId: string, passwordHash: string | null): void
     fetch(`/api/video?jobId=${encodeURIComponent(jobId)}`, { method: 'DELETE', headers, keepalive: true }).catch(
         () => undefined
     );
+}
+
+// A started video, remembered so that closing or reloading the page does not lose it.
+export type PendingVideoJob = {
+    jobId: string;
+    prompt: string;
+    startedAt: number;
+    aspect: string;
+    // The image being animated, when it is one the server can still serve.
+    baseUrl: string | null;
+};
+
+const PENDING_KEY = 'pendingVideoJob';
+
+export function savePendingVideoJob(job: PendingVideoJob, storage: Storage = localStorage): void {
+    try {
+        storage.setItem(PENDING_KEY, JSON.stringify(job));
+    } catch {
+        // Storage can be full or blocked; the video still works without resume.
+    }
+}
+
+export function clearPendingVideoJob(storage: Storage = localStorage): void {
+    try {
+        storage.removeItem(PENDING_KEY);
+    } catch {
+        // Nothing to clear.
+    }
+}
+
+// Returns the remembered job unless it is malformed or too old to still be worth waiting for.
+export function loadPendingVideoJob(storage: Storage = localStorage, now = Date.now()): PendingVideoJob | null {
+    try {
+        const job = JSON.parse(storage.getItem(PENDING_KEY) ?? 'null') as Partial<PendingVideoJob> | null;
+        if (
+            job &&
+            typeof job.jobId === 'string' &&
+            typeof job.prompt === 'string' &&
+            typeof job.startedAt === 'number' &&
+            typeof job.aspect === 'string' &&
+            now - job.startedAt < GIVE_UP_AFTER_MS
+        ) {
+            return {
+                jobId: job.jobId,
+                prompt: job.prompt,
+                startedAt: job.startedAt,
+                aspect: job.aspect,
+                baseUrl: typeof job.baseUrl === 'string' ? job.baseUrl : null
+            };
+        }
+    } catch {
+        // Fall through and forget it.
+    }
+    clearPendingVideoJob(storage);
+    return null;
 }

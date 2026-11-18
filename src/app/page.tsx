@@ -22,7 +22,16 @@ import { DEFAULT_OUTPUT_COMPRESSION, MAX_REFERENCE_IMAGES } from '@/lib/image-op
 import { isGeneratedImage, readImageStream, type GeneratedImage } from '@/lib/image-stream';
 import { EMPTY_PROMPT_DRAFT, promptDraftReducer } from '@/lib/prompt-draft';
 import { cn } from '@/lib/utils';
-import { cancelVideoJob, startVideo, VideoRequestError, waitForVideo } from '@/lib/video-client';
+import {
+    cancelVideoJob,
+    clearPendingVideoJob,
+    loadPendingVideoJob,
+    savePendingVideoJob,
+    startVideo,
+    VideoRequestError,
+    waitForVideo,
+    type PendingVideoJob
+} from '@/lib/video-client';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Lock, LockOpen, Plus, X } from 'lucide-react';
 import Image from 'next/image';
@@ -981,7 +990,67 @@ export default function HomePage() {
         if (!imageRequestRef.current || imageRequestRef.current.signal.aborted) return;
         setIsCancelling(true);
         if (videoJobRef.current) cancelVideoJob(videoJobRef.current, clientPasswordHash);
+        clearPendingVideoJob();
         imageRequestRef.current.abort();
+    };
+
+    // Turns the prompt (and the image on the stage or the first attached photo, if any) into a short video.
+    // Waits for a started video and puts it on the stage. Also used to pick a video back up after a reload.
+    const followVideoJob = async (job: PendingVideoJob, controller: AbortController) => {
+        videoJobRef.current = job.jobId;
+        imageRequestRef.current = controller;
+        setIsLoading(true);
+        setIsCancelling(false);
+        setPending({
+            kind: 'video',
+            prompt: job.prompt,
+            size: 'auto',
+            count: 1,
+            baseUrl: job.baseUrl,
+            aspect: job.aspect,
+            startedAt: job.startedAt
+        });
+        try {
+            const result = await waitForVideo(job.jobId, clientPasswordHash, controller.signal);
+            const entry: HistoryMetadata = {
+                timestamp: Date.now(),
+                videos: [{ filename: result.filename }],
+                storageModeUsed: 'fs',
+                durationMs: Date.now() - job.startedAt,
+                quality: 'auto',
+                background: 'auto',
+                moderation: 'low',
+                prompt: job.prompt,
+                mode: 'video',
+                costDetails: null,
+                model: result.model,
+                videoSeconds: result.seconds,
+                ...(result.poster ? { poster: result.poster } : {})
+            };
+            clearPendingVideoJob();
+            setLatestImageBatch([{ filename: result.filename, path: `/api/image/${result.filename}` }]);
+            setStageEntry(entry);
+            setStageIndex(0);
+            setEditStage(false);
+            setHistory((previous) => [entry, ...previous]);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        } catch (err: unknown) {
+            // Leaving the page aborts the wait but keeps the saved job, so the next visit picks it up.
+            if (controller.signal.aborted) return;
+            clearPendingVideoJob();
+            if (err instanceof VideoRequestError && err.status === 401 && isPasswordRequiredByBackend) {
+                setPasswordDialogContext('initial');
+                setIsPasswordDialogOpen(true);
+            }
+            console.error('Video error:', err);
+            setError(err instanceof Error ? err.message : 'The video could not be made.');
+        } finally {
+            setIsLoading(false);
+            setPending(null);
+            setIsCancelling(false);
+            videoJobRef.current = null;
+            imageRequestRef.current = null;
+        }
     };
 
     // Turns the prompt (and the image on the stage or the first attached photo, if any) into a short video.
@@ -1001,71 +1070,57 @@ export default function HomePage() {
         setIsCancelling(false);
         setError(null);
 
+        let job: PendingVideoJob;
         try {
             let image: File | null = genReferenceImages[0] ?? null;
             if (editTarget) image = await loadImageFile(editTarget.filename);
-            let aspect: string | undefined;
+            let aspect = genSize === '1536x1024' ? '16 / 9' : genSize === '1024x1536' ? '9 / 16' : '1 / 1';
             if (image) {
                 const bitmap = await createImageBitmap(image).catch(() => null);
                 if (bitmap) aspect = `${bitmap.width} / ${bitmap.height}`;
                 bitmap?.close();
             }
-            setPending({
-                kind: 'video',
-                prompt,
-                size: genSize,
-                count: 1,
-                baseUrl: editTarget?.path ?? (image ? (genReferenceImagePreviewUrls[0] ?? null) : null),
-                aspect: aspect ?? (genSize === '1536x1024' ? '16 / 9' : genSize === '1024x1536' ? '9 / 16' : '1 / 1')
-            });
+            const baseUrl = editTarget?.path ?? (image ? (genReferenceImagePreviewUrls[0] ?? null) : null);
+            setPending({ kind: 'video', prompt, size: 'auto', count: 1, baseUrl, aspect, startedAt });
             window.scrollTo({ top: 0, behavior: 'smooth' });
 
             const jobId = await startVideo(
                 { prompt, size: genSize, image, passwordHash: clientPasswordHash },
                 controller.signal
             );
-            videoJobRef.current = jobId;
-            const result = await waitForVideo(jobId, clientPasswordHash, controller.signal);
-
-            const entry: HistoryMetadata = {
-                timestamp: Date.now(),
-                videos: [{ filename: result.filename }],
-                storageModeUsed: 'fs',
-                durationMs: Date.now() - startedAt,
-                quality: 'auto',
-                background: 'auto',
-                moderation: 'low',
-                prompt,
-                mode: 'video',
-                costDetails: null,
-                model: result.model,
-                videoSeconds: result.seconds,
-                ...(result.poster ? { poster: result.poster } : {})
-            };
-            setLatestImageBatch([{ filename: result.filename, path: `/api/image/${result.filename}` }]);
-            setStageEntry(entry);
-            setStageIndex(0);
-            setEditStage(false);
+            // Only a server path survives a reload; attached photos live in this page's memory.
+            job = { jobId, prompt, startedAt, aspect, baseUrl: baseUrl?.startsWith('/api/') ? baseUrl : null };
+            savePendingVideoJob(job);
+            job = { ...job, baseUrl };
             setGenPrompt('');
             setGenReferenceImages([]);
             setGenReferenceImagePreviewUrls([]);
-            setHistory((previous) => [entry, ...previous]);
         } catch (err: unknown) {
+            setIsLoading(false);
+            setPending(null);
+            imageRequestRef.current = null;
             if (controller.signal.aborted) return;
             if (err instanceof VideoRequestError && err.status === 401 && isPasswordRequiredByBackend) {
                 setPasswordDialogContext('initial');
                 setIsPasswordDialogOpen(true);
             }
             console.error('Video error:', err);
-            setError(err instanceof Error ? err.message : 'The video could not be made.');
-        } finally {
-            setIsLoading(false);
-            setPending(null);
-            setIsCancelling(false);
-            videoJobRef.current = null;
-            imageRequestRef.current = null;
+            setError(err instanceof Error ? err.message : 'The video could not be started.');
+            return;
         }
+        await followVideoJob(job, controller);
     };
+
+    // A video keeps being made if the page is closed or reloaded; pick it back up on return.
+    const resumeChecked = React.useRef(false);
+    React.useEffect(() => {
+        if (resumeChecked.current || !videoInfo || isPasswordRequiredByBackend === null) return;
+        if (isPasswordRequiredByBackend && !clientPasswordHash) return;
+        resumeChecked.current = true;
+        const job = loadPendingVideoJob();
+        if (job && !imageRequestRef.current) void followVideoJob(job, new AbortController());
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once, when the server settings arrive
+    }, [videoInfo, isPasswordRequiredByBackend, clientPasswordHash]);
 
     const chooseOutputMode = (mode: OutputMode) => {
         setOutputMode(mode);

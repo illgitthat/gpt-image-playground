@@ -31,6 +31,8 @@ export type PendingGeneration = {
     baseUrl: string | null;
     // CSS aspect ratio of the result when it is not implied by `size`.
     aspect?: string;
+    // When the request began, if not just now (a video picked back up after a reload).
+    startedAt?: number;
 };
 
 type StageProps = {
@@ -73,10 +75,11 @@ function formatElapsed(seconds: number): string {
 function Developing({ pending, completedCount }: { pending: PendingGeneration; completedCount: number }) {
     const [elapsed, setElapsed] = React.useState(0);
     React.useEffect(() => {
-        const startedAt = Date.now();
+        const startedAt = pending.startedAt ?? Date.now();
+        setElapsed(Math.floor((Date.now() - startedAt) / 1000));
         const timer = setInterval(() => setElapsed(Math.floor((Date.now() - startedAt) / 1000)), 1000);
         return () => clearInterval(timer);
-    }, []);
+    }, [pending.startedAt]);
 
     const typical = TYPICAL_SECONDS[pending.kind];
     // Ease toward 95% so the bar never claims to be done before the result arrives.
@@ -200,12 +203,16 @@ export function Stage({
     const [actionError, setActionError] = React.useState<string | null>(null);
     const [copied, setCopied] = React.useState(false);
     const [promptExpanded, setPromptExpanded] = React.useState(false);
+    const [playbackFailed, setPlaybackFailed] = React.useState(false);
     // Detected after mount so server and client markup match.
     const [shareSupported, setShareSupported] = React.useState(false);
     React.useEffect(() => setShareSupported(canShareImages()), []);
 
     const current = images?.[selectedIndex] ?? images?.[0] ?? null;
-    React.useEffect(() => setActionError(null), [current?.filename]);
+    React.useEffect(() => {
+        setActionError(null);
+        setPlaybackFailed(false);
+    }, [current?.filename]);
     React.useEffect(() => setPromptExpanded(false), [prompt]);
 
     const lightboxMedia: LightboxMedia[] = React.useMemo(
@@ -277,6 +284,9 @@ export function Stage({
                         loop
                         muted
                         playsInline
+                        preload='auto'
+                        onError={() => setPlaybackFailed(true)}
+                        onLoadedData={() => setPlaybackFailed(false)}
                         aria-label={prompt || 'Generated video'}
                         className='stage-image block h-auto max-h-[min(56vh,640px)] w-auto max-w-full rounded-3xl bg-black shadow-[0_30px_80px_-30px_rgb(0_0_0/0.55)]'
                     />
@@ -409,6 +419,11 @@ export function Stage({
                     </ActionButton>
                 </div>
             </div>
+            {video && playbackFailed && !actionError && (
+                <p role='alert' className='text-muted-foreground text-sm'>
+                    This video would not play here. Download still works.
+                </p>
+            )}
             {actionError && (
                 <p role='alert' className='text-destructive text-sm'>
                     {actionError}

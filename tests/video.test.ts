@@ -12,6 +12,7 @@ import {
     videoStatus,
     type VideoConfig
 } from '../src/lib/video';
+import { clearPendingVideoJob, loadPendingVideoJob, savePendingVideoJob } from '../src/lib/video-client';
 import { afterEach, describe, expect, test } from 'bun:test';
 
 const ENDPOINT = 'https://gateway.example/resource/providers/falai/v1/minimax/h3-max-turbo';
@@ -194,5 +195,41 @@ describe('byte ranges', () => {
         expect(parseByteRange('bytes=50-10', 100)).toBe('invalid');
         expect(parseByteRange('bytes=-0', 100)).toBe('invalid');
         expect(parseByteRange('bytes=0-', 0)).toBe('invalid');
+    });
+});
+
+describe('remembering a video in progress', () => {
+    function memoryStorage(): Storage {
+        const data = new Map<string, string>();
+        return {
+            getItem: (key: string) => data.get(key) ?? null,
+            setItem: (key: string, value: string) => void data.set(key, value),
+            removeItem: (key: string) => void data.delete(key),
+            clear: () => data.clear(),
+            key: () => null,
+            get length() {
+                return data.size;
+            }
+        } as Storage;
+    }
+    const job = { jobId: JOB, prompt: 'a cat', startedAt: 1_000_000, aspect: '1 / 1', baseUrl: '/api/image/a.webp' };
+
+    test('a saved job comes back after a reload and is forgotten once cleared', () => {
+        const storage = memoryStorage();
+        savePendingVideoJob(job, storage);
+        expect(loadPendingVideoJob(storage, job.startedAt + 60_000)).toEqual(job);
+        clearPendingVideoJob(storage);
+        expect(loadPendingVideoJob(storage, job.startedAt + 60_000)).toBeNull();
+    });
+
+    test('stale or malformed jobs are dropped', () => {
+        const storage = memoryStorage();
+        savePendingVideoJob(job, storage);
+        expect(loadPendingVideoJob(storage, job.startedAt + 11 * 60_000)).toBeNull();
+        expect(storage.length).toBe(0);
+        storage.setItem('pendingVideoJob', '{not json');
+        expect(loadPendingVideoJob(storage)).toBeNull();
+        storage.setItem('pendingVideoJob', JSON.stringify({ jobId: 5 }));
+        expect(loadPendingVideoJob(storage)).toBeNull();
     });
 });
