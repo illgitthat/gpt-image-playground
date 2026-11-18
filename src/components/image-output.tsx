@@ -195,11 +195,6 @@ export function ImageOutput({
 
     return (
         <div className='border-border bg-card relative flex h-full min-h-[300px] w-full flex-col items-center justify-between gap-4 overflow-hidden rounded-md border p-5 shadow-[0_1px_0_0_var(--border)]'>
-            <div className='text-muted-foreground absolute top-4 right-5 font-mono text-[10px] tracking-[0.18em] uppercase'>
-                {!isLoading && imageBatch && imageBatch.length > 0
-                    ? `${typeof viewMode === 'number' ? viewMode + 1 : '·'} / ${imageBatch.length}`
-                    : ''}
-            </div>
             <div className='relative flex h-full w-full flex-grow items-center justify-center overflow-hidden'>
                 {isLoading || isPreparing ? (
                     streamingPreviewImages && streamingPreviewImages.size > 0 ? (
