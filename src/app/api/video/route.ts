@@ -25,6 +25,7 @@ const outputDir = path.resolve(/* turbopackIgnore: true */ process.cwd(), 'gener
 const MAX_START_IMAGE_BYTES = 25 * 1024 * 1024;
 // Longest side of the first frame sent to the model.
 const START_IMAGE_MAX_SIDE = 1280;
+const START_IMAGE_MIN_SIDE = 256;
 
 function passwordError(hash: string | null): NextResponse | null {
     if (!process.env.APP_PASSWORD) return null;
@@ -105,8 +106,18 @@ export async function POST(request: NextRequest) {
     let frame: Buffer | null = null;
     if (hasImage) {
         try {
-            frame = await sharp(Buffer.from(await image.arrayBuffer()))
-                .rotate()
+            const source = sharp(Buffer.from(await image.arrayBuffer())).rotate();
+            const { width = 0, height = 0 } = await source.metadata();
+            const shortest = Math.min(width, height);
+            // The model rejects images under 256 px on a side, so small ones are enlarged first.
+            const enlarged =
+                shortest > 0 && shortest < START_IMAGE_MIN_SIDE
+                    ? source.resize({
+                          width: Math.ceil((width * START_IMAGE_MIN_SIDE) / shortest),
+                          height: Math.ceil((height * START_IMAGE_MIN_SIDE) / shortest)
+                      })
+                    : source;
+            frame = await sharp(await enlarged.png().toBuffer())
                 .resize({
                     width: START_IMAGE_MAX_SIDE,
                     height: START_IMAGE_MAX_SIDE,
@@ -189,6 +200,10 @@ export async function GET(request: NextRequest) {
         await fs.rename(temporary, filepath);
         return done();
     } catch (error) {
+        // A failed job leaves no video, so its gallery still is not needed either.
+        if (error instanceof VideoApiError && error.status !== 429) {
+            await fs.unlink(path.join(outputDir, posterFilename(jobId))).catch(() => undefined);
+        }
         return errorResponse(error, 'The video could not be made.').response;
     }
 }
