@@ -54,7 +54,34 @@ export function clientInfo(headers: Headers): { ip?: string; user_agent?: string
 
 let ensuredDir: string | null = null;
 
-export async function logImageGeneration(entry: ImageGenerationLogEntry): Promise<void> {
+export type VideoGenerationLogEntry = {
+    time: string;
+    kind: 'video';
+    status: 'ok' | 'error' | 'rate_limited';
+    model: string;
+    prompt: string;
+    seconds: number;
+    resolution: string;
+    // 1 when the video starts from an image.
+    references: number;
+    // The file the finished video is saved as.
+    files: string[];
+    estimated_cost_usd: number;
+    ip?: string;
+    user_agent?: string;
+    error?: string;
+};
+
+export function logImageGeneration(entry: ImageGenerationLogEntry): Promise<void> {
+    return appendLog(entry);
+}
+
+// Videos share the image log; `kind: 'video'` tells the rows apart.
+export function logVideoGeneration(entry: VideoGenerationLogEntry): Promise<void> {
+    return appendLog(entry);
+}
+
+async function appendLog(entry: ImageGenerationLogEntry | VideoGenerationLogEntry): Promise<void> {
     const file = logFilePath();
     if (!file) return;
     try {
@@ -65,7 +92,7 @@ export async function logImageGeneration(entry: ImageGenerationLogEntry): Promis
         }
         await fs.appendFile(file, `${JSON.stringify(entry)}\n`);
     } catch (error) {
-        // Logging must never break image generation.
+        // Logging must never break a generation.
         console.error('Failed to write image generation log:', error);
     }
 }

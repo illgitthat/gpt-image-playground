@@ -14,7 +14,7 @@ const WINDOWS: Record<LimitScope, Window[]> = {
         { label: 'day', ms: DAY, env: 'IMAGE_LIMIT_PER_IP_DAY', fallback: 250 }
     ],
     text: [{ label: 'hour', ms: HOUR, env: 'TEXT_LIMIT_PER_IP_HOUR', fallback: 120 }],
-    video: [{ label: 'day', ms: DAY, env: 'VIDEO_LIMIT_PER_IP_DAY', fallback: 5 }]
+    video: [{ label: 'day', ms: DAY, env: 'VIDEO_LIMIT_PER_IP_DAY', fallback: 10 }]
 };
 
 function limitFor(window: Window): number {

@@ -1,6 +1,6 @@
 'use client';
 
-import { Composer, type GenerationFormData } from '@/components/composer';
+import { Composer, type GenerationFormData, type OutputMode } from '@/components/composer';
 import { Gallery } from '@/components/gallery';
 import { PasswordDialog } from '@/components/password-dialog';
 import { Stage, type PendingGeneration } from '@/components/stage';
@@ -15,14 +15,14 @@ import {
     DialogHeader,
     DialogTitle
 } from '@/components/ui/dialog';
-import type { VideoFormData } from '@/components/video-form';
-import { calculateSoraVideoCost, DEFAULT_IMAGE_MODEL, type CostDetails, type ImageModel } from '@/lib/cost-utils';
+import { DEFAULT_IMAGE_MODEL, type CostDetails, type ImageModel } from '@/lib/cost-utils';
 import { db, type ImageRecord } from '@/lib/db';
 import { compressImageForUpload } from '@/lib/image-compress';
 import { DEFAULT_OUTPUT_COMPRESSION, MAX_REFERENCE_IMAGES } from '@/lib/image-options';
 import { isGeneratedImage, readImageStream, type GeneratedImage } from '@/lib/image-stream';
 import { EMPTY_PROMPT_DRAFT, promptDraftReducer } from '@/lib/prompt-draft';
 import { cn } from '@/lib/utils';
+import { cancelVideoJob, startVideo, VideoRequestError, waitForVideo } from '@/lib/video-client';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Lock, LockOpen, Plus, X } from 'lucide-react';
 import Image from 'next/image';
@@ -49,9 +49,10 @@ export type HistoryMetadata = {
     mode: 'generate' | 'edit' | 'video';
     costDetails: CostDetails | null;
     output_format?: GenerationFormData['output_format'];
-    model?: ImageModel | 'sora-2';
-    videoSize?: '1280x720' | '720x1280';
+    model?: ImageModel | string;
     videoSeconds?: number;
+    // Still frame shown for a video in the gallery, when it was made from an image.
+    poster?: string;
     referenceImageFilenames?: string[];
 };
 
@@ -100,7 +101,10 @@ console.log(
 );
 
 export default function HomePage() {
-    const [mode, setMode] = React.useState<'generate' | 'video'>('generate');
+    // What the prompt bar makes next. Video is offered only when the server has it set up.
+    const [outputMode, setOutputMode] = React.useState<OutputMode>('image');
+    const [videoInfo, setVideoInfo] = React.useState<{ seconds: number } | null>(null);
+    const videoJobRef = React.useRef<string | null>(null);
     const [isPasswordRequiredByBackend, setIsPasswordRequiredByBackend] = React.useState<boolean | null>(null);
     const [clientPasswordHash, setClientPasswordHash] = React.useState<string | null>(null);
     const [isLoading, setIsLoading] = React.useState(false);
@@ -142,38 +146,14 @@ export default function HomePage() {
     const [genReferenceImages, setGenReferenceImages] = React.useState<File[]>([]);
     const [genReferenceImagePreviewUrls, setGenReferenceImagePreviewUrls] = React.useState<string[]>([]);
 
-    const [videoPromptDraft, dispatchVideoPrompt] = React.useReducer(promptDraftReducer, EMPTY_PROMPT_DRAFT);
-    const videoPrompt = videoPromptDraft.text;
-    const setVideoPrompt = React.useCallback((value: React.SetStateAction<string>) => {
-        dispatchVideoPrompt({ type: 'edit', value });
-    }, []);
-    const [videoSize, setVideoSize] = React.useState<'1280x720' | '720x1280'>('1280x720');
-    const [videoSeconds, setVideoSeconds] = React.useState([8]);
-    const [videoReferenceImage, setVideoReferenceImage] = React.useState<File | null>(null);
-    const [videoReferencePreviewUrl, setVideoReferencePreviewUrl] = React.useState<string | null>(null);
-    const [isGeneratingVideo, setIsGeneratingVideo] = React.useState(false);
-    const [latestVideoBatch, setLatestVideoBatch] = React.useState<{ path: string; filename: string }[] | null>(null);
-    const [videoViewIndex, setVideoViewIndex] = React.useState(0);
-    const [isEnhancingVideoPrompt, setIsEnhancingVideoPrompt] = React.useState(false);
-    const [videoPromptEnhanceError, setVideoPromptEnhanceError] = React.useState<string | null>(null);
-    const videoPollTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-    const [videoElapsedSeconds, setVideoElapsedSeconds] = React.useState(0);
-    const videoTimerRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
-
     // Keep the response on the SSE path for all image requests so reverse proxies
     // don't time out while waiting on long-running generations.
     const [partialImages] = React.useState<1 | 2 | 3>(3);
     // Streaming preview images (base64 data URLs for partial images during streaming)
     const [streamingPreviewImages, setStreamingPreviewImages] = React.useState<Map<number, string>>(new Map());
 
-    const isStreamingAllowed = mode === 'generate';
+    const isStreamingAllowed = true;
     React.useEffect(() => () => imageRequestRef.current?.abort(), []);
-
-    const cancelImageGeneration = () => {
-        if (!imageRequestRef.current || imageRequestRef.current.signal.aborted) return;
-        setIsCancelling(true);
-        imageRequestRef.current.abort();
-    };
 
     const getImageSrc = React.useCallback(
         (filename: string): string | undefined => {
@@ -206,14 +186,6 @@ export default function HomePage() {
             });
         };
     }, []);
-
-    React.useEffect(() => {
-        return () => {
-            if (videoReferencePreviewUrl && videoReferencePreviewUrl.startsWith('blob:')) {
-                URL.revokeObjectURL(videoReferencePreviewUrl);
-            }
-        };
-    }, [videoReferencePreviewUrl]);
 
     React.useEffect(() => {
         return () => {
@@ -251,6 +223,9 @@ export default function HomePage() {
                 }
                 const data = await response.json();
                 setIsPasswordRequiredByBackend(data.passwordRequired);
+                setVideoInfo(
+                    data.video && typeof data.video.seconds === 'number' ? { seconds: data.video.seconds } : null
+                );
             } catch (error) {
                 console.error('Error fetching auth status:', error);
                 setIsPasswordRequiredByBackend(false);
@@ -337,17 +312,6 @@ export default function HomePage() {
         return () => window.removeEventListener('paste', handlePaste);
     }, [genReferenceImages.length]);
 
-    React.useEffect(() => {
-        return () => {
-            if (videoPollTimeoutRef.current) {
-                clearTimeout(videoPollTimeoutRef.current);
-            }
-            if (videoTimerRef.current) {
-                clearInterval(videoTimerRef.current);
-            }
-        };
-    }, []);
-
     async function sha256Client(text: string): Promise<string> {
         const encoder = new TextEncoder();
         const data = encoder.encode(text);
@@ -405,12 +369,12 @@ export default function HomePage() {
         });
     }, []);
 
-    const handlePromptEnhance = async (targetMode: 'generate' | 'video') => {
-        const isGenerate = targetMode === 'generate';
-        const targetPrompt = isGenerate ? genPrompt : videoPrompt;
-        const setLoading = isGenerate ? setIsEnhancingGenPrompt : setIsEnhancingVideoPrompt;
-        const dispatchPrompt = isGenerate ? dispatchGenPrompt : dispatchVideoPrompt;
-        const setEnhanceError = isGenerate ? setGenPromptEnhanceError : setVideoPromptEnhanceError;
+    const handlePromptEnhance = async () => {
+        const targetMode = outputMode === 'video' ? 'video' : 'generate';
+        const targetPrompt = genPrompt;
+        const setLoading = setIsEnhancingGenPrompt;
+        const dispatchPrompt = dispatchGenPrompt;
+        const setEnhanceError = setGenPromptEnhanceError;
 
         if (!targetPrompt.trim()) {
             setEnhanceError('Add a prompt first.');
@@ -430,9 +394,9 @@ export default function HomePage() {
         dispatchPrompt({ type: 'request', id: requestId });
 
         let referenceImagesPayload: { dataUrl: string; alt?: string }[] = [];
-        let videoHasReferenceImage = false;
+        const videoHasReferenceImage = editTarget !== null || genReferenceImages.length > 0;
 
-        if (targetMode === 'generate' && genReferenceImages.length > 0) {
+        if (genReferenceImages.length > 0) {
             try {
                 referenceImagesPayload = await Promise.all(
                     genReferenceImages.map(async (file) => ({
@@ -444,25 +408,6 @@ export default function HomePage() {
                     readError instanceof Error
                         ? readError.message
                         : 'Failed to attach reference images for prompt enhancement.';
-                setEnhanceError(message);
-                setLoading(false);
-                dispatchPrompt({ type: 'finish', id: requestId });
-                return;
-            }
-        } else if (targetMode === 'video' && videoReferenceImage) {
-            try {
-                videoHasReferenceImage = true;
-                referenceImagesPayload = [
-                    {
-                        dataUrl: await fileToDataUrl(videoReferenceImage),
-                        alt: `Reference frame for video${videoReferenceImage.name ? ` (${videoReferenceImage.name})` : ''}`
-                    }
-                ];
-            } catch (readError) {
-                const message =
-                    readError instanceof Error
-                        ? readError.message
-                        : 'Failed to attach reference image for prompt enhancement.';
                 setEnhanceError(message);
                 setLoading(false);
                 dispatchPrompt({ type: 'finish', id: requestId });
@@ -579,189 +524,6 @@ export default function HomePage() {
         }
     };
 
-    const handleVideoSubmit = async (formData: VideoFormData) => {
-        const startTime = Date.now();
-        if (videoPollTimeoutRef.current) {
-            clearTimeout(videoPollTimeoutRef.current);
-            videoPollTimeoutRef.current = null;
-        }
-        if (videoTimerRef.current) {
-            clearInterval(videoTimerRef.current);
-            videoTimerRef.current = null;
-        }
-
-        setIsGeneratingVideo(true);
-        setError(null);
-        setLatestVideoBatch(null);
-        setVideoViewIndex(0);
-        setVideoElapsedSeconds(0);
-
-        // Start elapsed time timer
-        videoTimerRef.current = setInterval(() => {
-            setVideoElapsedSeconds((prev) => prev + 1);
-        }, 1000);
-
-        if (isPasswordRequiredByBackend && !clientPasswordHash) {
-            setError('Password is required. Please configure the password by clicking the lock icon.');
-            setPasswordDialogContext('initial');
-            setIsPasswordDialogOpen(true);
-            setIsGeneratingVideo(false);
-            return;
-        }
-
-        const apiFormData = new FormData();
-        apiFormData.append('prompt', formData.prompt);
-        apiFormData.append('size', formData.size);
-        apiFormData.append('seconds', formData.seconds.toString());
-        if (formData.referenceImage) {
-            apiFormData.append('reference_image', formData.referenceImage, formData.referenceImage.name);
-        }
-
-        if (isPasswordRequiredByBackend && clientPasswordHash) {
-            apiFormData.append('passwordHash', clientPasswordHash);
-        }
-
-        try {
-            const response = await fetch('/api/video', {
-                method: 'POST',
-                body: apiFormData
-            });
-
-            const rawText = await response.text();
-            let result: any = null;
-            try {
-                result = JSON.parse(rawText);
-            } catch {
-                // keep rawText for error display
-            }
-
-            if (!response.ok) {
-                if (response.status === 401 && isPasswordRequiredByBackend) {
-                    setError('Unauthorized: Invalid or missing password. Please try again.');
-                    setPasswordDialogContext('retry');
-                    setIsPasswordDialogOpen(true);
-                    return;
-                }
-                const fallback =
-                    (result && result.error) || rawText || `Video API request failed with status ${response.status}`;
-                throw new Error(typeof fallback === 'string' ? fallback : 'Video API request failed.');
-            }
-
-            const jobId: string | undefined = result?.jobId;
-            if (!jobId) {
-                throw new Error('Video API did not return a job id.');
-            }
-
-            const maxAttempts = 300;
-            const pollDelayMs = 2000;
-
-            const pollStatus = async (attempt = 0) => {
-                try {
-                    const statusResp = await fetch(`/api/video?jobId=${encodeURIComponent(jobId)}`);
-                    const statusText = await statusResp.text();
-
-                    let statusJson: any = null;
-                    try {
-                        statusJson = JSON.parse(statusText);
-                    } catch {
-                        throw new Error(`Unexpected response while polling video: ${statusText?.slice(0, 200)}`);
-                    }
-
-                    if (!statusResp.ok) {
-                        const msg = statusJson?.error || `Video status check failed (${statusResp.status})`;
-                        throw new Error(msg);
-                    }
-
-                    const status = (statusJson.status as string | undefined)?.toLowerCase() || 'queued';
-
-                    if (status === 'succeeded' || status === 'completed') {
-                        if (statusJson.videos && statusJson.videos.length > 0) {
-                            const durationMs = Date.now() - startTime;
-                            setLatestVideoBatch(statusJson.videos);
-                            setMode('video');
-                            setVideoViewIndex(0);
-
-                            const batchTimestamp = Date.now();
-                            const videoCostDetails = calculateSoraVideoCost(formData.seconds);
-                            const newHistoryEntry: HistoryMetadata = {
-                                timestamp: batchTimestamp,
-                                videos: statusJson.videos.map((vid: { filename: string }) => ({
-                                    filename: vid.filename
-                                })),
-                                storageModeUsed: 'fs',
-                                durationMs,
-                                quality: 'low',
-                                background: 'auto',
-                                moderation: 'low',
-                                prompt: formData.prompt,
-                                mode: 'video',
-                                costDetails: videoCostDetails,
-                                videoSize: formData.size,
-                                videoSeconds: formData.seconds,
-                                model: statusJson.model || 'sora-2'
-                            };
-
-                            setHistory((prevHistory) => [newHistoryEntry, ...prevHistory]);
-                        } else {
-                            throw new Error('Video status succeeded but no video was returned.');
-                        }
-
-                        if (videoPollTimeoutRef.current) {
-                            clearTimeout(videoPollTimeoutRef.current);
-                            videoPollTimeoutRef.current = null;
-                        }
-                        if (videoTimerRef.current) {
-                            clearInterval(videoTimerRef.current);
-                            videoTimerRef.current = null;
-                        }
-                        setIsGeneratingVideo(false);
-                        return;
-                    }
-
-                    if (['queued', 'running', 'in_progress', 'processing', 'notstarted'].includes(status)) {
-                        if (attempt >= maxAttempts) {
-                            throw new Error('Video generation timed out while polling.');
-                        }
-                        videoPollTimeoutRef.current = setTimeout(() => {
-                            pollStatus(attempt + 1);
-                        }, pollDelayMs);
-                        return;
-                    }
-
-                    const failureReason = statusJson?.error || `Video generation failed with status: ${status}`;
-                    throw new Error(failureReason);
-                } catch (err: unknown) {
-                    if (videoPollTimeoutRef.current) {
-                        clearTimeout(videoPollTimeoutRef.current);
-                        videoPollTimeoutRef.current = null;
-                    }
-                    if (videoTimerRef.current) {
-                        clearInterval(videoTimerRef.current);
-                        videoTimerRef.current = null;
-                    }
-
-                    const errorMessage =
-                        err instanceof Error ? err.message : 'An unexpected error occurred while polling video status.';
-                    setError(errorMessage);
-                    setLatestVideoBatch(null);
-                    setIsGeneratingVideo(false);
-                }
-            };
-
-            pollStatus(0);
-        } catch (err: unknown) {
-            if (videoTimerRef.current) {
-                clearInterval(videoTimerRef.current);
-                videoTimerRef.current = null;
-            }
-            const errorMessage =
-                err instanceof Error ? err.message : 'An unexpected error occurred while creating video.';
-            setError(errorMessage);
-            setLatestVideoBatch(null);
-            setIsGeneratingVideo(false);
-        }
-    };
-
     const saveReferenceImages = async (refImages: File[], batchTimestamp: number): Promise<string[]> => {
         if (refImages.length === 0) return [];
         const filenames: string[] = [];
@@ -845,7 +607,7 @@ export default function HomePage() {
         setIsLoading(true);
         setError(null);
         // The current image stays in state so a failed or cancelled request brings it back.
-        setPending({ prompt: formData.prompt, size: formData.size, count: formData.n, baseUrl });
+        setPending({ kind: 'image', prompt: formData.prompt, size: formData.size, count: formData.n, baseUrl });
         window.scrollTo({ top: 0, behavior: 'smooth' });
         setStreamingPreviewImages(new Map());
         setCompletedImageCount(0);
@@ -985,58 +747,31 @@ export default function HomePage() {
         }
     };
 
-    const handleHistorySelect = (item: HistoryMetadata, options: { skipModeChange?: boolean } = {}) => {
-        console.log(
-            `Selecting history item from ${new Date(item.timestamp).toISOString()}, stored via: ${item.storageModeUsed}`
-        );
-        const originalStorageMode = item.storageModeUsed || 'fs';
+    // Put a past image or video back on the stage.
+    const handleHistorySelect = (item: HistoryMetadata) => {
         const isVideoEntry = item.mode === 'video';
-        const assets = item.videos && item.videos.length > 0 ? item.videos : item.images || [];
+        const assets = isVideoEntry ? (item.videos ?? []) : (item.images ?? []);
+        const fromBrowser = !isVideoEntry && (item.storageModeUsed || 'fs') === 'indexeddb';
+        const validAssets = assets
+            .map((asset) => {
+                const path = fromBrowser ? getImageSrc(asset.filename) : `/api/image/${asset.filename}`;
+                return path ? { path, filename: asset.filename } : null;
+            })
+            .filter((asset): asset is { path: string; filename: string } => asset !== null);
 
-        const selectedBatchPromises = assets.map(async (asset) => {
-            let path: string | undefined;
-
-            if (originalStorageMode === 'indexeddb') {
-                path = getImageSrc(asset.filename);
-            } else {
-                path = `/api/image/${asset.filename}`;
-            }
-
-            if (path) {
-                return { path, filename: asset.filename };
-            } else {
-                console.warn(
-                    `Could not get asset source for history item: ${asset.filename} (mode: ${originalStorageMode})`
-                );
-                setError(`Asset ${asset.filename} could not be loaded.`);
-                return null;
-            }
-        });
-
-        Promise.all(selectedBatchPromises).then((resolvedBatch) => {
-            const validAssets = resolvedBatch.filter(Boolean) as { path: string; filename: string }[];
-
-            if (validAssets.length !== assets.length && !error) {
-                setError(
-                    'Some items from this history entry could not be loaded (they might have been cleared or are missing).'
-                );
-            } else if (validAssets.length === assets.length) {
-                setError(null);
-            }
-
-            if (isVideoEntry) {
-                setLatestVideoBatch(validAssets.length > 0 ? validAssets : null);
-                if (!options.skipModeChange) setMode('video');
-                setVideoViewIndex(0);
-            } else {
-                setLatestImageBatch(validAssets.length > 0 ? validAssets : null);
-                setStageEntry(validAssets.length > 0 ? item : null);
-                setStageIndex(0);
-                setEditStage(validAssets.length > 0);
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-                if (!options.skipModeChange) setMode(item.mode === 'video' ? 'video' : 'generate');
-            }
-        });
+        setError(
+            validAssets.length === assets.length
+                ? null
+                : 'Some of these could not be loaded. They may have been cleared or deleted.'
+        );
+        setLatestImageBatch(validAssets.length > 0 ? validAssets : null);
+        setStageEntry(validAssets.length > 0 ? item : null);
+        setStageIndex(0);
+        // A video cannot be edited; the next prompt starts something new.
+        setEditStage(validAssets.length > 0 && !isVideoEntry);
+        // Opening an image means editing it by default; Animate is one tap away.
+        if (!isVideoEntry) setOutputMode('image');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
     const handleClearHistory = async () => {
@@ -1067,8 +802,6 @@ export default function HomePage() {
         setLatestImageBatch(null);
         setStageEntry(null);
         setEditStage(false);
-        setLatestVideoBatch(null);
-        setVideoViewIndex(0);
         setError(null);
 
         try {
@@ -1108,55 +841,6 @@ export default function HomePage() {
         return new File([blob], filename, { type: blob.type || 'image/png' });
     };
 
-    const handleSendToVideo = async (filename: string) => {
-        if (isGeneratingVideo) return;
-        setIsGeneratingVideo(true);
-        setError(null);
-
-        try {
-            let blob: Blob | undefined;
-            let mimeType: string = 'image/png';
-
-            if (effectiveStorageModeClient === 'indexeddb') {
-                const record = allDbImages?.find((img) => img.filename === filename);
-                if (record?.blob) {
-                    blob = record.blob;
-                    mimeType = blob.type || mimeType;
-                } else {
-                    throw new Error(`Image ${filename} not found in local database.`);
-                }
-            } else {
-                const response = await fetch(`/api/image/${filename}`);
-                if (!response.ok) {
-                    throw new Error(`Failed to fetch image: ${response.statusText}`);
-                }
-                blob = await response.blob();
-                mimeType = response.headers.get('Content-Type') || mimeType;
-            }
-
-            if (!blob) {
-                throw new Error(`Could not retrieve image data for ${filename}.`);
-            }
-
-            const newFile = new File([blob], filename, { type: mimeType });
-            const previewUrl = URL.createObjectURL(blob);
-
-            if (videoReferencePreviewUrl && videoReferencePreviewUrl.startsWith('blob:')) {
-                URL.revokeObjectURL(videoReferencePreviewUrl);
-            }
-
-            setVideoReferenceImage(newFile);
-            setVideoReferencePreviewUrl(previewUrl);
-            setMode('video');
-        } catch (err: unknown) {
-            console.error('Error sending image to video:', err);
-            const errorMessage = err instanceof Error ? err.message : 'Failed to send image to video form.';
-            setError(errorMessage);
-        } finally {
-            setIsGeneratingVideo(false);
-        }
-    };
-
     const executeDeleteItem = async (item: HistoryMetadata) => {
         if (!item) return;
         console.log(`Executing delete for history item timestamp: ${item.timestamp}`);
@@ -1169,7 +853,10 @@ export default function HomePage() {
             timestamp,
             referenceImageFilenames = []
         } = item;
-        const filenamesToDelete = [...imagesInEntry, ...videosInEntry].map((asset) => asset.filename);
+        const filenamesToDelete = [
+            ...[...imagesInEntry, ...videosInEntry].map((asset) => asset.filename),
+            ...(item.poster ? [item.poster] : [])
+        ];
 
         try {
             if (storageModeUsed === 'indexeddb') {
@@ -1177,7 +864,7 @@ export default function HomePage() {
                 console.log('Deleting from IndexedDB:', indexedDbFilenamesToDelete);
                 await deleteIndexedDbFiles(indexedDbFilenamesToDelete);
                 console.log('Successfully deleted from IndexedDB and cleared blob cache.');
-            } else if (storageModeUsed === 'fs') {
+            } else {
                 console.log('Requesting deletion from filesystem via API:', filenamesToDelete);
                 const apiPayload: { filenames: string[]; passwordHash?: string } = { filenames: filenamesToDelete };
                 if (isPasswordRequiredByBackend && clientPasswordHash) {
@@ -1238,16 +925,8 @@ export default function HomePage() {
     };
 
     const applyHistoryPrompt = (prompt: string, targetMode: 'generate' | 'edit' | 'video') => {
-        // TODO: Before re-enabling the video UI, keep history prompt reuse from
-        // switching into `video` mode unless the video form/output are mounted again.
-        if (targetMode === 'video') {
-            setVideoPrompt(prompt);
-            setMode('video');
-        } else {
-            // Both 'generate' and legacy 'edit' history entries go to generate
-            setGenPrompt(prompt);
-            setMode('generate');
-        }
+        setGenPrompt(prompt);
+        setOutputMode(targetMode === 'video' && videoInfo ? 'video' : 'image');
     };
 
     const finishHistoryPromptReuse = () => {
@@ -1293,11 +972,119 @@ export default function HomePage() {
     };
 
     const stageImage = latestImageBatch?.[stageIndex] ?? latestImageBatch?.[0] ?? null;
-    const editTarget = editStage && stageImage ? stageImage : null;
+    const stageIsVideo = stageEntry?.mode === 'video';
+    const editTarget = editStage && stageImage && !stageIsVideo ? stageImage : null;
+    const makingVideo = outputMode === 'video' && videoInfo !== null;
     const hasStage = pending !== null || stageImage !== null;
 
+    const cancelGeneration = () => {
+        if (!imageRequestRef.current || imageRequestRef.current.signal.aborted) return;
+        setIsCancelling(true);
+        if (videoJobRef.current) cancelVideoJob(videoJobRef.current, clientPasswordHash);
+        imageRequestRef.current.abort();
+    };
+
+    // Turns the prompt (and the image on the stage or the first attached photo, if any) into a short video.
+    const handleVideoCall = async () => {
+        if (imageRequestRef.current || !videoInfo) return;
+        if (isPasswordRequiredByBackend && !clientPasswordHash) {
+            setError('Password is required. Please configure the password by clicking the lock icon.');
+            setPasswordDialogContext('initial');
+            setIsPasswordDialogOpen(true);
+            return;
+        }
+        const prompt = genPrompt.trim();
+        const startedAt = Date.now();
+        const controller = new AbortController();
+        imageRequestRef.current = controller;
+        setIsLoading(true);
+        setIsCancelling(false);
+        setError(null);
+
+        try {
+            let image: File | null = genReferenceImages[0] ?? null;
+            if (editTarget) image = await loadImageFile(editTarget.filename);
+            let aspect: string | undefined;
+            if (image) {
+                const bitmap = await createImageBitmap(image).catch(() => null);
+                if (bitmap) aspect = `${bitmap.width} / ${bitmap.height}`;
+                bitmap?.close();
+            }
+            setPending({
+                kind: 'video',
+                prompt,
+                size: genSize,
+                count: 1,
+                baseUrl: editTarget?.path ?? (image ? (genReferenceImagePreviewUrls[0] ?? null) : null),
+                aspect: aspect ?? (genSize === '1536x1024' ? '16 / 9' : genSize === '1024x1536' ? '9 / 16' : '1 / 1')
+            });
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+
+            const jobId = await startVideo(
+                { prompt, size: genSize, image, passwordHash: clientPasswordHash },
+                controller.signal
+            );
+            videoJobRef.current = jobId;
+            const result = await waitForVideo(jobId, clientPasswordHash, controller.signal);
+
+            const entry: HistoryMetadata = {
+                timestamp: Date.now(),
+                videos: [{ filename: result.filename }],
+                storageModeUsed: 'fs',
+                durationMs: Date.now() - startedAt,
+                quality: 'auto',
+                background: 'auto',
+                moderation: 'low',
+                prompt,
+                mode: 'video',
+                costDetails: null,
+                model: result.model,
+                videoSeconds: result.seconds,
+                ...(result.poster ? { poster: result.poster } : {})
+            };
+            setLatestImageBatch([{ filename: result.filename, path: `/api/image/${result.filename}` }]);
+            setStageEntry(entry);
+            setStageIndex(0);
+            setEditStage(false);
+            setGenPrompt('');
+            setGenReferenceImages([]);
+            setGenReferenceImagePreviewUrls([]);
+            setHistory((previous) => [entry, ...previous]);
+        } catch (err: unknown) {
+            if (controller.signal.aborted) return;
+            if (err instanceof VideoRequestError && err.status === 401 && isPasswordRequiredByBackend) {
+                setPasswordDialogContext('initial');
+                setIsPasswordDialogOpen(true);
+            }
+            console.error('Video error:', err);
+            setError(err instanceof Error ? err.message : 'The video could not be made.');
+        } finally {
+            setIsLoading(false);
+            setPending(null);
+            setIsCancelling(false);
+            videoJobRef.current = null;
+            imageRequestRef.current = null;
+        }
+    };
+
+    const chooseOutputMode = (mode: OutputMode) => {
+        setOutputMode(mode);
+        if (mode === 'video') {
+            // A video starts from one image: the one on the stage, or else the first attached photo.
+            const keep = editTarget ? 0 : 1;
+            setGenReferenceImages((previous) => previous.slice(0, keep));
+            setGenReferenceImagePreviewUrls((previous) => previous.slice(0, keep));
+        }
+    };
+
     const handleSubmit = async () => {
-        if (isLoading || !genPrompt.trim()) return;
+        if (isLoading) return;
+        if (makingVideo) {
+            // An image can be animated without a description; a video from nothing needs one.
+            if (genPrompt.trim() || editTarget || genReferenceImages.length > 0) await handleVideoCall();
+            return;
+        }
+        if (!genPrompt.trim()) return;
         let referenceImages = genReferenceImages;
         if (editTarget) {
             try {
@@ -1342,7 +1129,7 @@ export default function HomePage() {
         setEditStage(false);
         const references = stageEntry.referenceImageFilenames ?? [];
         if (references.length > 0) handleReuseWithReferences(stageEntry.prompt, references);
-        else handleReusePrompt(stageEntry.prompt, 'generate');
+        else handleReusePrompt(stageEntry.prompt, stageIsVideo ? 'video' : 'generate');
     };
 
     return (
@@ -1361,9 +1148,9 @@ export default function HomePage() {
             <Dialog open={isClearHistoryDialogOpen} onOpenChange={setIsClearHistoryDialogOpen}>
                 <DialogContent>
                     <DialogHeader>
-                        <DialogTitle>Clear all your images?</DialogTitle>
+                        <DialogTitle>Clear everything you made?</DialogTitle>
                         <DialogDescription>
-                            This removes every image from this browser&apos;s list. This cannot be undone.
+                            This removes every image and video from this browser&apos;s list. This cannot be undone.
                         </DialogDescription>
                     </DialogHeader>
                     <DialogFooter>
@@ -1383,7 +1170,9 @@ export default function HomePage() {
                 }}>
                 <DialogContent className='sm:max-w-md'>
                     <DialogHeader>
-                        <DialogTitle>Delete this image?</DialogTitle>
+                        <DialogTitle>
+                            {itemToDeleteConfirm?.mode === 'video' ? 'Delete this video?' : 'Delete this image?'}
+                        </DialogTitle>
                         <DialogDescription>
                             {(itemToDeleteConfirm?.images?.length ?? 0) > 1
                                 ? `This deletes all ${itemToDeleteConfirm?.images?.length} images made from this prompt.`
@@ -1413,14 +1202,18 @@ export default function HomePage() {
             </Dialog>
             <div className='sr-only' role='status' aria-live='polite'>
                 {isLoading
-                    ? 'Generating image…'
+                    ? pending?.kind === 'video'
+                        ? 'Making video…'
+                        : 'Generating image…'
                     : isEnhancingGenPrompt
                       ? 'Improving prompt…'
                       : isSurprisingGen
                         ? 'Coming up with an idea…'
-                        : latestImageBatch && latestImageBatch.length > 0
-                          ? `Showing ${latestImageBatch.length} image${latestImageBatch.length === 1 ? '' : 's'}.`
-                          : ''}
+                        : stageIsVideo
+                          ? 'Showing your video.'
+                          : latestImageBatch && latestImageBatch.length > 0
+                            ? `Showing ${latestImageBatch.length} image${latestImageBatch.length === 1 ? '' : 's'}.`
+                            : ''}
             </div>
 
             <header className='flex w-full max-w-6xl items-center justify-between gap-3 py-4'>
@@ -1473,11 +1266,25 @@ export default function HomePage() {
                         pending={pending}
                         completedCount={completedImageCount}
                         previews={streamingPreviewImages}
-                        isEditing={editTarget !== null}
+                        video={stageIsVideo ? { poster: stageEntry?.poster ?? null } : null}
+                        isEditing={editTarget !== null && !makingVideo}
+                        isAnimating={editTarget !== null && makingVideo}
                         onEdit={() => {
                             setEditStage(true);
+                            setOutputMode('image');
                             document.getElementById('prompt')?.focus();
                         }}
+                        onAnimate={
+                            videoInfo
+                                ? () => {
+                                      setEditStage(true);
+                                      setOutputMode('video');
+                                      setGenReferenceImages([]);
+                                      setGenReferenceImagePreviewUrls([]);
+                                      document.getElementById('prompt')?.focus();
+                                  }
+                                : undefined
+                        }
                         onReusePrompt={handleReuseStagePrompt}
                         onDelete={() => stageEntry && handleRequestDeleteItem(stageEntry)}
                     />
@@ -1504,7 +1311,7 @@ export default function HomePage() {
                     prompt={genPrompt}
                     setPrompt={setGenPrompt}
                     onSubmit={handleSubmit}
-                    onCancel={cancelImageGeneration}
+                    onCancel={cancelGeneration}
                     isLoading={isLoading}
                     isCancelling={isCancelling}
                     size={genSize}
@@ -1515,10 +1322,13 @@ export default function HomePage() {
                     referencePreviewUrls={genReferenceImagePreviewUrls}
                     setReferenceImages={setGenReferenceImages}
                     setReferencePreviewUrls={setGenReferenceImagePreviewUrls}
-                    maxReferenceImages={MAX_REFERENCE_IMAGES}
+                    maxReferenceImages={makingVideo ? 1 : MAX_REFERENCE_IMAGES}
+                    outputMode={makingVideo ? 'video' : 'image'}
+                    setOutputMode={videoInfo ? chooseOutputMode : undefined}
+                    videoSeconds={videoInfo?.seconds ?? 0}
                     editTargetUrl={editTarget?.path ?? null}
                     onStopEditing={() => setEditStage(false)}
-                    onEnhance={() => handlePromptEnhance('generate')}
+                    onEnhance={handlePromptEnhance}
                     isEnhancing={isEnhancingGenPrompt}
                     onSurprise={handleSurpriseMe}
                     isSurprising={isSurprisingGen}
@@ -1538,6 +1348,7 @@ export default function HomePage() {
                                     type='button'
                                     onClick={() => {
                                         setGenPrompt(example.prompt);
+                                        setOutputMode('image');
                                         document.getElementById('prompt')?.focus();
                                     }}
                                     className='bg-card/70 border-border text-foreground/90 hover:border-foreground/30 hover:bg-card focus-visible:ring-ring flex w-full items-center gap-2.5 rounded-full border py-1.5 pr-4 pl-1.5 text-sm transition-colors focus-visible:ring-2 focus-visible:outline-none'>
@@ -1569,7 +1380,7 @@ export default function HomePage() {
             </div>
 
             <footer className='text-muted-foreground/70 mt-10 w-full max-w-6xl text-center text-xs'>
-                Made with MAI Image 2.7
+                Made with MAI Image 2.7{videoInfo ? ' and MiniMax H3 video' : ''}
             </footer>
         </main>
     );

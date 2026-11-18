@@ -4,7 +4,18 @@ import type { ImageSize } from '@/components/composer';
 import { ImageLightbox, type LightboxMedia } from '@/components/image-lightbox';
 import { canShareImages, downloadImage, shareImage } from '@/lib/image-download';
 import { cn } from '@/lib/utils';
-import { Check, Copy, Download, Loader2, Maximize2, Pencil, RotateCcw, Share2, Trash2 } from 'lucide-react';
+import {
+    Check,
+    Clapperboard,
+    Copy,
+    Download,
+    Loader2,
+    Maximize2,
+    Pencil,
+    RotateCcw,
+    Share2,
+    Trash2
+} from 'lucide-react';
 import Image from 'next/image';
 import * as React from 'react';
 
@@ -12,11 +23,14 @@ export type StageImage = { path: string; filename: string };
 
 // What is being made right now, shown while the request runs.
 export type PendingGeneration = {
+    kind: 'image' | 'video';
     prompt: string;
     size: ImageSize;
     count: number;
-    // The image being changed, when this is an edit.
+    // The image being changed or animated, if any.
     baseUrl: string | null;
+    // CSS aspect ratio of the result when it is not implied by `size`.
+    aspect?: string;
 };
 
 type StageProps = {
@@ -27,15 +41,21 @@ type StageProps = {
     pending: PendingGeneration | null;
     completedCount: number;
     previews: Map<number, string>;
+    // Set when the stage holds a video rather than images.
+    video: { poster: string | null } | null;
     // Whether the next prompt will change the selected image.
     isEditing: boolean;
+    // Whether the next prompt will turn the selected image into a video.
+    isAnimating: boolean;
     onEdit: () => void;
+    // Absent when video is not available.
+    onAnimate?: () => void;
     onReusePrompt: () => void;
     onDelete: () => void;
 };
 
-// MAI returns no partial previews; typical generations take about this long.
-const TYPICAL_GENERATION_SECONDS = 25;
+// Neither model returns partial previews; typical generations take about this long.
+const TYPICAL_SECONDS = { image: 25, video: 25 } as const;
 
 const ASPECT: Record<ImageSize, string> = {
     '1024x1024': '1 / 1',
@@ -58,20 +78,30 @@ function Developing({ pending, completedCount }: { pending: PendingGeneration; c
         return () => clearInterval(timer);
     }, []);
 
-    // Ease toward 95% so the bar never claims to be done before the image arrives.
-    const progress = Math.min(95, 100 * (1 - Math.exp(-elapsed / (TYPICAL_GENERATION_SECONDS / 2))));
-    const overdue = elapsed > TYPICAL_GENERATION_SECONDS * 1.6;
-    const verb = pending.baseUrl
-        ? 'Applying your change'
-        : pending.count > 1
-          ? `Making ${pending.count} images`
-          : 'Making your image';
+    const typical = TYPICAL_SECONDS[pending.kind];
+    // Ease toward 95% so the bar never claims to be done before the result arrives.
+    const progress = Math.min(95, 100 * (1 - Math.exp(-elapsed / (typical / 2))));
+    const overdue = elapsed > typical * 1.6;
+    const verb =
+        pending.kind === 'video'
+            ? pending.baseUrl
+                ? 'Animating your image'
+                : 'Making your video'
+            : pending.baseUrl
+              ? 'Applying your change'
+              : pending.count > 1
+                ? `Making ${pending.count} images`
+                : 'Making your image';
     const status = completedCount > 0 && pending.count > 1 ? `${completedCount} of ${pending.count} done` : verb;
 
     return (
         <div
             className='developing border-border relative mx-auto w-full overflow-hidden rounded-3xl border'
-            style={{ aspectRatio: ASPECT[pending.size], maxHeight: 'min(56vh, 640px)', maxWidth: 'min(100%, 640px)' }}>
+            style={{
+                aspectRatio: pending.aspect ?? ASPECT[pending.size],
+                maxHeight: 'min(56vh, 640px)',
+                maxWidth: 'min(100%, 640px)'
+            }}>
             {pending.baseUrl && (
                 <Image
                     src={pending.baseUrl}
@@ -102,8 +132,7 @@ function Developing({ pending, completedCount }: { pending: PendingGeneration; c
                         />
                     </div>
                     <p className='text-foreground/60 font-mono text-[11px] tabular-nums'>
-                        {formatElapsed(elapsed)} ·{' '}
-                        {overdue ? 'taking longer than usual' : `usually about ${TYPICAL_GENERATION_SECONDS}s`}
+                        {formatElapsed(elapsed)} · {overdue ? 'taking longer than usual' : `usually about ${typical}s`}
                     </p>
                 </div>
             </div>
@@ -117,7 +146,8 @@ function ActionButton({
     disabled,
     children,
     destructive,
-    compact
+    compact,
+    compactOnPhone
 }: {
     label: string;
     onClick: () => void;
@@ -126,6 +156,8 @@ function ActionButton({
     destructive?: boolean;
     // Icon only; the label is still read out and shown on hover.
     compact?: boolean;
+    // Icon only on phones, to keep the row on one line.
+    compactOnPhone?: boolean;
 }) {
     return (
         <button
@@ -140,7 +172,9 @@ function ActionButton({
                     : 'text-foreground/90 hover:bg-muted'
             )}>
             {children}
-            <span className={cn(destructive && 'sr-only', compact && 'sr-only')}>{label}</span>
+            <span className={cn((destructive || compact) && 'sr-only', compactOnPhone && 'max-sm:sr-only')}>
+                {label}
+            </span>
         </button>
     );
 }
@@ -153,8 +187,11 @@ export function Stage({
     pending,
     completedCount,
     previews,
+    video,
     isEditing,
+    isAnimating,
     onEdit,
+    onAnimate,
     onReusePrompt,
     onDelete
 }: StageProps) {
@@ -230,28 +267,43 @@ export function Stage({
     return (
         <div className='stage-in flex w-full flex-col items-center gap-3'>
             <div className='relative max-w-full'>
-                <button
-                    type='button'
-                    onClick={() => setLightboxOpen(true)}
-                    aria-label='View full size'
-                    className='group focus-visible:ring-ring relative block max-w-full cursor-zoom-in overflow-hidden rounded-3xl shadow-[0_30px_80px_-30px_rgb(0_0_0/0.55)] focus-visible:ring-2 focus-visible:ring-offset-4 focus-visible:outline-none'>
-                    <Image
+                {video ? (
+                    <video
                         key={current.filename}
                         src={current.path}
-                        alt={prompt || 'Generated image'}
-                        width={1024}
-                        height={1024}
-                        className='stage-image block h-auto max-h-[min(56vh,640px)] w-auto max-w-full object-contain'
-                        style={{ width: 'auto', height: 'auto' }}
-                        unoptimized
-                        loading='eager'
-                        fetchPriority='high'
+                        poster={video.poster ? `/api/image/${video.poster}` : undefined}
+                        controls
+                        autoPlay
+                        loop
+                        muted
+                        playsInline
+                        aria-label={prompt || 'Generated video'}
+                        className='stage-image block h-auto max-h-[min(56vh,640px)] w-auto max-w-full rounded-3xl bg-black shadow-[0_30px_80px_-30px_rgb(0_0_0/0.55)]'
                     />
-                    <span className='bg-background/70 text-foreground absolute top-3 right-3 flex h-9 w-9 items-center justify-center rounded-full opacity-0 backdrop-blur transition-opacity group-hover:opacity-100 pointer-coarse:hidden'>
-                        <Maximize2 className='h-4 w-4' />
-                    </span>
-                </button>
-                {images.length > 1 && (
+                ) : (
+                    <button
+                        type='button'
+                        onClick={() => setLightboxOpen(true)}
+                        aria-label='View full size'
+                        className='group focus-visible:ring-ring relative block max-w-full cursor-zoom-in overflow-hidden rounded-3xl shadow-[0_30px_80px_-30px_rgb(0_0_0/0.55)] focus-visible:ring-2 focus-visible:ring-offset-4 focus-visible:outline-none'>
+                        <Image
+                            key={current.filename}
+                            src={current.path}
+                            alt={prompt || 'Generated image'}
+                            width={1024}
+                            height={1024}
+                            className='stage-image block h-auto max-h-[min(56vh,640px)] w-auto max-w-full object-contain'
+                            style={{ width: 'auto', height: 'auto' }}
+                            unoptimized
+                            loading='eager'
+                            fetchPriority='high'
+                        />
+                        <span className='bg-background/70 text-foreground absolute top-3 right-3 flex h-9 w-9 items-center justify-center rounded-full opacity-0 backdrop-blur transition-opacity group-hover:opacity-100 pointer-coarse:hidden'>
+                            <Maximize2 className='h-4 w-4' />
+                        </span>
+                    </button>
+                )}
+                {!video && images.length > 1 && (
                     <div
                         role='radiogroup'
                         aria-label='Choose an image'
@@ -303,7 +355,7 @@ export function Stage({
                     </button>
                 )}
                 <div className='flex shrink-0 flex-wrap items-center justify-center gap-0.5'>
-                    {!isEditing && (
+                    {!video && !isEditing && !isAnimating && (
                         <button
                             type='button'
                             onClick={onEdit}
@@ -312,7 +364,21 @@ export function Stage({
                             Edit this image
                         </button>
                     )}
-                    <ActionButton label='Download' onClick={() => run('download')} disabled={busy !== null}>
+                    {!video && isAnimating && (
+                        <ActionButton label='Edit' onClick={onEdit}>
+                            <Pencil className='h-4 w-4' />
+                        </ActionButton>
+                    )}
+                    {!video && onAnimate && !isAnimating && (
+                        <ActionButton label='Animate' onClick={onAnimate}>
+                            <Clapperboard className='h-4 w-4' />
+                        </ActionButton>
+                    )}
+                    <ActionButton
+                        label='Download'
+                        onClick={() => run('download')}
+                        disabled={busy !== null}
+                        compactOnPhone={!video && Boolean(onAnimate)}>
                         {busy === 'download' ? (
                             <Loader2 className='h-4 w-4 animate-spin' />
                         ) : (
@@ -349,12 +415,14 @@ export function Stage({
                 </p>
             )}
 
-            <ImageLightbox
-                media={lightboxMedia}
-                open={lightboxOpen}
-                onOpenChange={setLightboxOpen}
-                initialIndex={selectedIndex}
-            />
+            {!video && (
+                <ImageLightbox
+                    media={lightboxMedia}
+                    open={lightboxOpen}
+                    onOpenChange={setLightboxOpen}
+                    initialIndex={selectedIndex}
+                />
+            )}
         </div>
     );
 }

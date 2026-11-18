@@ -78,7 +78,7 @@ describe('image prompt inputs', () => {
         }
     });
 
-    test('video keeps Sora guidance and low-detail reference analysis', () => {
+    test('video keeps its own guidance and low-detail reference analysis', () => {
         const plain = buildPromptEnhanceInput('video', 'Pan left');
         expect(plain.instructions).toContain('prompt-to-video');
         expect(plain.instructions).not.toContain('gpt-image-2.5');

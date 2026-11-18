@@ -8,13 +8,13 @@ export async function fetchDownloadImage(url: string): Promise<Blob> {
     if (!response.ok) {
         throw new Error(
             response.status === 404
-                ? 'Image not found. It may have been deleted.'
+                ? 'File not found. It may have been deleted.'
                 : `Download failed (${response.status}). Try again.`
         );
     }
     const blob = await response.blob();
-    if (!blob.type.startsWith('image/') || blob.size === 0) {
-        throw new Error('The response is not an image. Try again.');
+    if (!(blob.type.startsWith('image/') || blob.type.startsWith('video/')) || blob.size === 0) {
+        throw new Error('The response is not an image or video. Try again.');
     }
     return blob;
 }
