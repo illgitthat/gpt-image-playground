@@ -32,25 +32,3 @@ export function isMaiImageModel(value: unknown): value is MaiImageModel {
 export function isImageModel(value: unknown): value is ImageModel {
     return isGptImageModel(value) || isMaiImageModel(value);
 }
-
-// Pricing for Sora video
-const SORA_VIDEO_COST_PER_SECOND = 0.1; // $0.10 per second
-
-/**
- * Estimates Sora video cost based on clip duration.
- * @param seconds - Duration of the requested video in seconds.
- */
-export function calculateSoraVideoCost(seconds: number): CostDetails {
-    const duration = Number.isFinite(seconds) && seconds > 0 ? seconds : 0;
-    const costUSD = duration * SORA_VIDEO_COST_PER_SECOND;
-    const costRounded = Math.round(costUSD * 10000) / 10000;
-
-    return {
-        estimated_cost_usd: costRounded,
-        text_input_tokens: 0,
-        image_input_tokens: 0,
-        cached_input_tokens: 0,
-        billable_input_tokens: 0,
-        image_output_tokens: 0
-    };
-}

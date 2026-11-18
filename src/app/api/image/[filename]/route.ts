@@ -2,6 +2,7 @@ import fs from 'fs/promises';
 import { lookup } from 'mime-types';
 import { NextRequest, NextResponse } from 'next/server';
 import path from 'path';
+import { parseByteRange } from '@/lib/byte-range';
 import { findStoredImage } from '@/lib/stored-image';
 
 // Base directory where images are stored (outside gpt-image-playground)
@@ -50,18 +51,44 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       });
     }
 
-    const fileBuffer = await fs.readFile(storedPath);
     const contentType = lookup(storedPath) || 'application/octet-stream';
+    const baseHeaders = {
+      'Content-Type': contentType,
+      'Cache-Control': IMMUTABLE_CACHE_CONTROL,
+      'Accept-Ranges': 'bytes',
+      ETag: etag,
+      'Last-Modified': new Date(stat.mtimeMs).toUTCString()
+    };
+
+    // Browsers (Safari in particular) only play video that can be fetched in byte ranges.
+    const range = parseByteRange(request.headers.get('range'), stat.size);
+    if (range === 'invalid') {
+      return new NextResponse(null, { status: 416, headers: { 'Content-Range': `bytes */${stat.size}` } });
+    }
+    if (range) {
+      const length = range.end - range.start + 1;
+      const chunk = Buffer.alloc(length);
+      const handle = await fs.open(storedPath, 'r');
+      try {
+        await handle.read(chunk, 0, length, range.start);
+      } finally {
+        await handle.close();
+      }
+      return new NextResponse(new Uint8Array(chunk), {
+        status: 206,
+        headers: {
+          ...baseHeaders,
+          'Content-Length': length.toString(),
+          'Content-Range': `bytes ${range.start}-${range.end}/${stat.size}`
+        }
+      });
+    }
+
+    const fileBuffer = await fs.readFile(storedPath);
 
     return new NextResponse(fileBuffer, {
       status: 200,
-      headers: {
-        'Content-Type': contentType,
-        'Content-Length': fileBuffer.length.toString(),
-        'Cache-Control': IMMUTABLE_CACHE_CONTROL,
-        ETag: etag,
-        'Last-Modified': new Date(stat.mtimeMs).toUTCString()
-      }
+      headers: { ...baseHeaders, 'Content-Length': fileBuffer.length.toString() }
     });
   } catch (error: unknown) {
     console.error(`Error serving image ${filename}:`, error);

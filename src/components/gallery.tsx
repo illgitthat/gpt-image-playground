@@ -2,7 +2,7 @@
 
 import type { HistoryMetadata } from '@/app/page';
 import { cn } from '@/lib/utils';
-import { Layers } from 'lucide-react';
+import { Layers, Play } from 'lucide-react';
 import Image from 'next/image';
 import * as React from 'react';
 
@@ -14,16 +14,18 @@ type GalleryProps = {
     onClear: () => void;
 };
 
-// Everything this browser has made, newest first. Tap one to bring it back to the stage.
+// Every image and video this browser has made, newest first. Tap one to bring it back to the stage.
 export function Gallery({ history, activeTimestamp, getImageSrc, onOpen, onClear }: GalleryProps) {
-    const items = history.filter((item) => item.mode !== 'video' && (item.images?.length ?? 0) > 0);
+    const items = history.filter((item) =>
+        item.mode === 'video' ? (item.videos?.length ?? 0) > 0 : (item.images?.length ?? 0) > 0
+    );
     if (items.length === 0) return null;
 
     return (
         <section aria-labelledby='gallery-heading' className='w-full'>
             <div className='mb-3 flex items-baseline justify-between gap-4'>
                 <h2 id='gallery-heading' className='text-foreground text-sm font-semibold'>
-                    Your images
+                    {items.some((item) => item.mode === 'video') ? 'Your images and videos' : 'Your images'}
                     <span className='text-muted-foreground ml-2 text-xs font-normal tabular-nums'>{items.length}</span>
                 </h2>
                 <button
@@ -35,11 +37,16 @@ export function Gallery({ history, activeTimestamp, getImageSrc, onOpen, onClear
             </div>
             <ul className='grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8'>
                 {items.map((item, index) => {
-                    const first = item.images![0];
-                    const src =
-                        (item.storageModeUsed || 'fs') === 'indexeddb'
-                            ? getImageSrc(first.filename)
-                            : `/api/image/${first.filename}`;
+                    const isVideo = item.mode === 'video';
+                    const first = isVideo ? item.videos![0] : item.images![0];
+                    // Videos made from an image have a saved still; others show their own first frame.
+                    const src = isVideo
+                        ? item.poster
+                            ? `/api/image/${item.poster}`
+                            : undefined
+                        : (item.storageModeUsed || 'fs') === 'indexeddb'
+                          ? getImageSrc(first.filename)
+                          : `/api/image/${first.filename}`;
                     const active = item.timestamp === activeTimestamp;
                     return (
                         <li key={item.timestamp}>
@@ -47,7 +54,7 @@ export function Gallery({ history, activeTimestamp, getImageSrc, onOpen, onClear
                                 type='button'
                                 onClick={() => onOpen(item)}
                                 title={item.prompt}
-                                aria-label={`Open: ${item.prompt || 'untitled image'}`}
+                                aria-label={`Open ${isVideo ? 'video' : 'image'}: ${item.prompt || 'untitled'}`}
                                 aria-current={active ? 'true' : undefined}
                                 className={cn(
                                     'group bg-muted focus-visible:ring-ring relative block aspect-square w-full overflow-hidden rounded-2xl transition-all focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none',
@@ -65,12 +72,27 @@ export function Gallery({ history, activeTimestamp, getImageSrc, onOpen, onClear
                                         unoptimized
                                         loading={index < 8 ? 'eager' : 'lazy'}
                                     />
+                                ) : isVideo ? (
+                                    <video
+                                        src={`/api/image/${first.filename}#t=0.1`}
+                                        preload='metadata'
+                                        muted
+                                        playsInline
+                                        tabIndex={-1}
+                                        aria-hidden='true'
+                                        className='pointer-events-none h-full w-full object-cover'
+                                    />
                                 ) : (
                                     <span className='text-muted-foreground flex h-full w-full items-center justify-center text-xs'>
                                         missing
                                     </span>
                                 )}
-                                {item.images!.length > 1 && (
+                                {isVideo && (
+                                    <span className='bg-background/75 text-foreground absolute right-1.5 bottom-1.5 flex h-6 w-6 items-center justify-center rounded-full backdrop-blur'>
+                                        <Play className='h-3 w-3 fill-current' />
+                                    </span>
+                                )}
+                                {!isVideo && item.images!.length > 1 && (
                                     <span className='bg-background/75 text-foreground absolute right-1.5 bottom-1.5 flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[11px] backdrop-blur'>
                                         <Layers className='h-3 w-3' />
                                         {item.images!.length}

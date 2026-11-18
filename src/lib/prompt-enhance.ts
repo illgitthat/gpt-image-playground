@@ -22,7 +22,7 @@ const editSystemPrompt = `Refine the user's request using the supplied images. F
 
 ${imagePromptRules}`;
 
-const videoWithReferenceSystemPrompt = `You are an expert prompt engineer for image-to-video generation (Sora 2) using a single reference frame. Rewrite the user's request into an actionable video directive that keeps fidelity to the reference image while describing motion precisely.
+const videoWithReferenceSystemPrompt = `You are an expert prompt engineer for image-to-video generation using a single reference frame. Rewrite the user's request into an actionable video directive that keeps fidelity to the reference image while describing motion precisely.
 
 Rules:
 - Return ONLY the raw prompt text. For complex requests with dialogue or multi-beat actions, use labeled sections (Cinematography:, Actions:, Dialogue:); otherwise use natural prose.
@@ -37,7 +37,7 @@ Rules:
 - Do not invent new objects or characters not in the reference; stay faithful to the composition.
 - Length target: 80-120 words for detailed control; shorter for simple motions.`;
 
-const videoPromptOnlySystemPrompt = `You are an expert prompt engineer for prompt-to-video generation (Sora 2) with no reference image. Rewrite the user's request into a detailed, visual directive that establishes scene, motion, and camera with precision.
+const videoPromptOnlySystemPrompt = `You are an expert prompt engineer for prompt-to-video generation with no reference image. Rewrite the user's request into a detailed, visual directive that establishes scene, motion, and camera with precision.
 
 Structure (use prose for simple requests; labeled sections for complex multi-beat or dialogue scenes):
 1. Scene prose: environment, subjects, wardrobe/props, atmosphere

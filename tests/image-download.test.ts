@@ -33,7 +33,7 @@ describe('image downloads', () => {
     });
 
     test('rejects a missing image before starting a browser download', async () => {
-        await expect(downloadImage(`${server.url}missing`, 'image.png')).rejects.toThrow('Image not found');
+        await expect(downloadImage(`${server.url}missing`, 'image.png')).rejects.toThrow('File not found');
     });
 
     test.each(['empty', 'wrong-type'])('rejects %s responses instead of saving an invalid image', async (path) => {

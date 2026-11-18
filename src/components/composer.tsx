@@ -7,7 +7,9 @@ import { MAX_IMAGES } from '@/lib/image-options';
 import { cn } from '@/lib/utils';
 import {
     ArrowUp,
+    Clapperboard,
     Dices,
+    ImageIcon,
     Loader2,
     Plus,
     RectangleHorizontal,
@@ -21,6 +23,8 @@ import Image from 'next/image';
 import * as React from 'react';
 
 export type ImageSize = '1024x1024' | '1536x1024' | '1024x1536' | 'auto';
+
+export type OutputMode = 'image' | 'video';
 
 export type GenerationFormData = {
     prompt: string;
@@ -41,6 +45,11 @@ const SIZES: { value: ImageSize; label: string; Icon: React.ElementType }[] = [
     { value: '1024x1536', label: 'Tall', Icon: RectangleVertical }
 ];
 
+const OUTPUT_MODES: { value: OutputMode; label: string; Icon: React.ElementType }[] = [
+    { value: 'image', label: 'Image', Icon: ImageIcon },
+    { value: 'video', label: 'Video', Icon: Clapperboard }
+];
+
 type ComposerProps = {
     prompt: string;
     setPrompt: (value: string) => void;
@@ -57,6 +66,11 @@ type ComposerProps = {
     setReferenceImages: React.Dispatch<React.SetStateAction<File[]>>;
     setReferencePreviewUrls: React.Dispatch<React.SetStateAction<string[]>>;
     maxReferenceImages: number;
+    outputMode: OutputMode;
+    // Absent when video is not available; the Image/Video switch is then hidden.
+    setOutputMode?: (mode: OutputMode) => void;
+    // Length of the clips the server makes.
+    videoSeconds: number;
     // The image on the stage that the next prompt will change, if any.
     editTargetUrl: string | null;
     onStopEditing: () => void;
@@ -128,6 +142,9 @@ export function Composer({
     setReferenceImages,
     setReferencePreviewUrls,
     maxReferenceImages,
+    outputMode,
+    setOutputMode,
+    videoSeconds,
     editTargetUrl,
     onStopEditing,
     onEnhance,
@@ -147,7 +164,10 @@ export function Composer({
 
     const busy = isLoading || isEnhancing || isSurprising;
     const uploadSlots = maxReferenceImages - referenceImages.length - (editTargetUrl ? 1 : 0);
-    const canSend = !busy && prompt.trim().length > 0;
+    const isVideo = outputMode === 'video';
+    const hasStartImage = Boolean(editTargetUrl) || referenceImages.length > 0;
+    // An image can be animated without a description.
+    const canSend = !busy && (prompt.trim().length > 0 || (isVideo && hasStartImage));
 
     // Grow with the text, up to about eight lines.
     React.useLayoutEffect(() => {
@@ -191,11 +211,15 @@ export function Composer({
     };
 
     const hasAttachments = Boolean(editTargetUrl) || referencePreviewUrls.length > 0;
-    const placeholder = editTargetUrl
-        ? 'Describe a change, like “make it night”'
-        : referenceImages.length > 0
-          ? 'What should happen with these images?'
-          : 'Describe the image you want…';
+    const placeholder = isVideo
+        ? hasStartImage
+            ? 'How should it move? (optional)'
+            : 'Describe the video you want…'
+        : editTargetUrl
+          ? 'Describe a change, like “make it night”'
+          : referenceImages.length > 0
+            ? 'What should happen with these images?'
+            : 'Describe the image you want…';
 
     return (
         <form
@@ -226,8 +250,33 @@ export function Composer({
                 'composer bg-card relative w-full rounded-[1.75rem] border p-2 transition-shadow',
                 isDragging ? 'border-primary ring-primary/30 ring-4' : 'border-border'
             )}>
-            {hasAttachments && (
-                <div className='flex flex-wrap items-center gap-2 px-2 pt-2'>
+            {(hasAttachments || setOutputMode) && (
+                <div className='flex flex-wrap items-center gap-2 px-1 pt-1'>
+                    {setOutputMode && (
+                        <div
+                            role='radiogroup'
+                            aria-label='What to make'
+                            className='bg-muted/60 flex shrink-0 items-center rounded-full p-0.5'>
+                            {OUTPUT_MODES.map(({ value, label, Icon }) => (
+                                <button
+                                    key={value}
+                                    type='button'
+                                    role='radio'
+                                    aria-checked={outputMode === value}
+                                    disabled={isLoading}
+                                    onClick={() => setOutputMode(value)}
+                                    className={cn(
+                                        'focus-visible:ring-ring flex h-8 items-center gap-1.5 rounded-full px-3 text-sm transition-colors focus-visible:ring-2 focus-visible:outline-none disabled:opacity-50',
+                                        outputMode === value
+                                            ? 'bg-background text-foreground font-medium shadow-sm'
+                                            : 'text-muted-foreground hover:text-foreground'
+                                    )}>
+                                    <Icon className='h-4 w-4' aria-hidden='true' />
+                                    {label}
+                                </button>
+                            ))}
+                        </div>
+                    )}
                     {editTargetUrl && (
                         <div className='bg-primary/12 text-foreground border-primary/30 flex items-center gap-2 rounded-full border py-1 pr-1 pl-1 text-xs'>
                             <Image
@@ -238,12 +287,18 @@ export function Composer({
                                 className='h-7 w-7 rounded-full object-cover'
                                 unoptimized
                             />
-                            <span className='font-medium'>Editing this image</span>
+                            <span className='font-medium'>
+                                {isVideo ? 'Animating this image' : 'Editing this image'}
+                            </span>
                             <button
                                 type='button'
                                 onClick={onStopEditing}
                                 disabled={isLoading}
-                                aria-label='Stop editing this image and start a new one'
+                                aria-label={
+                                    isVideo
+                                        ? 'Stop animating this image'
+                                        : 'Stop editing this image and start a new one'
+                                }
                                 className='hover:bg-foreground/10 flex h-6 w-6 items-center justify-center rounded-full transition-colors'>
                                 <X className='h-3.5 w-3.5' />
                             </button>
@@ -303,7 +358,15 @@ export function Composer({
 
             <div className='flex items-center gap-1 pt-1'>
                 <ToolButton
-                    label={uploadSlots > 0 ? 'Add a photo' : `Up to ${maxReferenceImages} images`}
+                    label={
+                        uploadSlots > 0
+                            ? isVideo
+                                ? 'Add a photo to animate'
+                                : 'Add a photo'
+                            : isVideo
+                              ? 'A video starts from one image'
+                              : `Up to ${maxReferenceImages} images`
+                    }
                     onClick={() => fileInputRef.current?.click()}
                     disabled={isLoading || uploadSlots <= 0}>
                     <Plus className='h-5 w-5' />
@@ -312,7 +375,7 @@ export function Composer({
                     ref={fileInputRef}
                     type='file'
                     accept='image/png, image/jpeg, image/webp'
-                    multiple
+                    multiple={maxReferenceImages > 1}
                     className='hidden'
                     onChange={(event) => {
                         if (event.target.files) addFiles(Array.from(event.target.files));
@@ -320,42 +383,52 @@ export function Composer({
                     }}
                 />
 
-                <div
-                    role='radiogroup'
-                    aria-label='Image shape'
-                    className='bg-muted/60 flex shrink-0 items-center rounded-full p-0.5'>
-                    {SIZES.map(({ value, label, Icon }) => {
-                        const selected = (size === 'auto' ? '1024x1024' : size) === value;
-                        return (
-                            <button
-                                key={value}
-                                type='button'
-                                role='radio'
-                                aria-checked={selected}
-                                aria-label={label}
-                                title={label}
-                                disabled={isLoading}
-                                onClick={() => setSize(value)}
-                                className={cn(
-                                    'focus-visible:ring-ring flex h-8 items-center justify-center gap-1.5 rounded-full px-2 text-sm transition-colors focus-visible:ring-2 focus-visible:outline-none disabled:opacity-50 sm:h-9 sm:px-2.5',
-                                    selected
-                                        ? 'bg-background text-foreground shadow-sm'
-                                        : 'text-muted-foreground hover:text-foreground'
-                                )}>
-                                <Icon className='h-4 w-4' aria-hidden='true' />
-                                <span className='hidden md:inline'>{label}</span>
-                            </button>
-                        );
-                    })}
-                </div>
+                {!(isVideo && hasStartImage) && (
+                    <div
+                        role='radiogroup'
+                        aria-label={isVideo ? 'Video shape' : 'Image shape'}
+                        className='bg-muted/60 flex shrink-0 items-center rounded-full p-0.5'>
+                        {SIZES.map(({ value, label, Icon }) => {
+                            const selected = (size === 'auto' ? '1024x1024' : size) === value;
+                            return (
+                                <button
+                                    key={value}
+                                    type='button'
+                                    role='radio'
+                                    aria-checked={selected}
+                                    aria-label={label}
+                                    title={label}
+                                    disabled={isLoading}
+                                    onClick={() => setSize(value)}
+                                    className={cn(
+                                        'focus-visible:ring-ring flex h-8 items-center justify-center gap-1.5 rounded-full px-2 text-sm transition-colors focus-visible:ring-2 focus-visible:outline-none disabled:opacity-50 sm:h-9 sm:px-2.5',
+                                        selected
+                                            ? 'bg-background text-foreground shadow-sm'
+                                            : 'text-muted-foreground hover:text-foreground'
+                                    )}>
+                                    <Icon className='h-4 w-4' aria-hidden='true' />
+                                    <span className='hidden md:inline'>{label}</span>
+                                </button>
+                            );
+                        })}
+                    </div>
+                )}
 
-                <ToolButton
-                    label={count === 1 ? 'Make 2 at once' : 'Make 1 at a time'}
-                    onClick={() => setCount(count >= MAX_IMAGES ? 1 : count + 1)}
-                    disabled={isLoading}
-                    className={cn('tabular-nums', count > 1 && 'bg-muted text-foreground')}>
-                    <span className='font-medium'>{count}×</span>
-                </ToolButton>
+                {isVideo ? (
+                    <span
+                        className='text-muted-foreground shrink-0 px-2 text-sm tabular-nums'
+                        title={`Videos are ${videoSeconds} seconds long, with sound`}>
+                        {videoSeconds}s<span className='hidden sm:inline'> clip</span>
+                    </span>
+                ) : (
+                    <ToolButton
+                        label={count === 1 ? 'Make 2 at once' : 'Make 1 at a time'}
+                        onClick={() => setCount(count >= MAX_IMAGES ? 1 : count + 1)}
+                        disabled={isLoading}
+                        className={cn('tabular-nums', count > 1 && 'bg-muted text-foreground')}>
+                        <span className='font-medium'>{count}×</span>
+                    </ToolButton>
+                )}
 
                 <div className='flex-1' />
 
@@ -392,7 +465,7 @@ export function Composer({
                     <button
                         type='submit'
                         disabled={!canSend}
-                        aria-label={editTargetUrl ? 'Apply change' : 'Generate'}
+                        aria-label={isVideo ? 'Make video' : editTargetUrl ? 'Apply change' : 'Generate'}
                         className='bg-primary text-primary-foreground focus-visible:ring-ring disabled:bg-muted disabled:text-muted-foreground flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-all focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none enabled:hover:scale-105 enabled:active:scale-95'>
                         <ArrowUp className='h-5 w-5' strokeWidth={2.5} />
                     </button>

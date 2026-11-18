@@ -1,6 +1,13 @@
+import { estimateVideoCost, videoConfig } from '@/lib/video';
 import { NextResponse } from 'next/server';
 
 export async function GET() {
-    const appPasswordSet = !!process.env.APP_PASSWORD;
-    return NextResponse.json({ passwordRequired: appPasswordSet });
+    const video = videoConfig();
+    return NextResponse.json({
+        passwordRequired: !!process.env.APP_PASSWORD,
+        // Null when video is not set up; the UI then hides it.
+        video: video
+            ? { seconds: video.seconds, estimatedCostUsd: estimateVideoCost(video.seconds, video.resolution) }
+            : null
+    });
 }

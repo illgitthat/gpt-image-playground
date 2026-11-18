@@ -1,273 +1,206 @@
+import { clientInfo, limitKeyForIp, logVideoGeneration, type VideoGenerationLogEntry } from '@/lib/generation-log';
+import { ipLimiter } from '@/lib/ip-limit';
+import {
+    aspectRatioForSize,
+    cancelVideo,
+    DEFAULT_MOTION_PROMPT,
+    downloadVideo,
+    estimateVideoCost,
+    isVideoJobId,
+    MAX_VIDEO_PROMPT_LENGTH,
+    posterFilename,
+    submitVideo,
+    VideoApiError,
+    videoConfig,
+    videoFilename,
+    videoStatus
+} from '@/lib/video';
 import crypto from 'crypto';
 import fs from 'fs/promises';
-import { clientInfo, limitKeyForIp } from '@/lib/generation-log';
-import { ipLimiter } from '@/lib/ip-limit';
 import { NextRequest, NextResponse } from 'next/server';
 import path from 'path';
 import sharp from 'sharp';
 
 const outputDir = path.resolve(/* turbopackIgnore: true */ process.cwd(), 'generated-images');
+const MAX_START_IMAGE_BYTES = 25 * 1024 * 1024;
+// Longest side of the first frame sent to the model.
+const START_IMAGE_MAX_SIDE = 1280;
 
-const config = {
-    apiKey: process.env.AZURE_OPENAI_API_KEY || process.env.OPENAI_API_KEY,
-    baseURL: process.env.AZURE_OPENAI_ENDPOINT || process.env.OPENAI_API_BASE_URL
-};
+function passwordError(hash: string | null): NextResponse | null {
+    if (!process.env.APP_PASSWORD) return null;
+    const expected = crypto.createHash('sha256').update(process.env.APP_PASSWORD).digest('hex');
+    if (hash === expected) return null;
+    return NextResponse.json(
+        { error: hash ? 'Unauthorized: Invalid password.' : 'Unauthorized: Missing password hash.' },
+        { status: 401 }
+    );
+}
 
-const soraModel = process.env.AZURE_OPENAI_SORA_MODEL || 'sora-2';
-const validSizes = new Set(['1280x720', '720x1280']);
+const notConfigured = () => NextResponse.json({ error: 'Video is not set up on this server.' }, { status: 503 });
 
-function parseSize(size: string): { width: number; height: number } {
-    const [w, h] = size.split('x').map((v) => parseInt(v, 10));
-    if (!w || !h) {
-        throw new Error('Invalid size format. Expected WIDTHxHEIGHT.');
+async function exists(filepath: string): Promise<boolean> {
+    return fs.access(filepath).then(
+        () => true,
+        () => false
+    );
+}
+
+function errorResponse(error: unknown, fallback: string) {
+    if (error instanceof VideoApiError) {
+        const status = error.status === 429 ? 429 : error.status >= 400 && error.status < 500 ? 400 : 502;
+        const message =
+            error.status === 429 ? 'The video model is busy. Wait a minute, then try again.' : error.message;
+        return { message, response: NextResponse.json({ error: message }, { status }) };
     }
-    return { width: w, height: h };
+    console.error('Error in /api/video:', error);
+    return { message: fallback, response: NextResponse.json({ error: fallback }, { status: 500 }) };
 }
 
-function sha256(data: string): string {
-    return crypto.createHash('sha256').update(data).digest('hex');
-}
-
-async function ensureOutputDirExists() {
-    try {
-        await fs.access(outputDir);
-    } catch (error: unknown) {
-        const isENOENT = typeof error === 'object' && error !== null && 'code' in error && (error as { code?: string }).code === 'ENOENT';
-        if (isENOENT) {
-            await fs.mkdir(outputDir, { recursive: true });
-            console.log(`Created output directory: ${outputDir}`);
-        } else {
-            console.error(`Error accessing output directory ${outputDir}:`, error);
-            throw new Error('Failed to access output directory');
-        }
-    }
-}
-
-function getBaseUrl(): string {
-    const endpoint = config.baseURL?.replace(/\/$/, '');
-    if (!endpoint) {
-        throw new Error('API endpoint is not configured.');
-    }
-    return endpoint;
-}
-
-async function fetchVideoStatus(jobId: string) {
-    const baseUrl = getBaseUrl();
-    const statusUrl = `${baseUrl}/videos/${jobId}`;
-
-    const statusResp = await fetch(statusUrl, {
-        method: 'GET',
-        headers: {
-            'api-key': config.apiKey || ''
-        }
-    });
-
-    if (!statusResp.ok) {
-        const errorText = await statusResp.text().catch(() => '');
-        throw new Error(`Failed to poll video status: ${statusResp.status} ${statusResp.statusText} ${errorText}`);
-    }
-
-    return statusResp.json();
-}
-
-async function downloadVideo(jobId: string, baseUrl: string) {
-    const downloadUrl = `${baseUrl}/videos/${jobId}/content?variant=video`;
-    const downloadResp = await fetch(downloadUrl, {
-        method: 'GET',
-        headers: {
-            'api-key': config.apiKey || '',
-            Accept: 'application/octet-stream'
-        }
-    });
-
-    if (!downloadResp.ok) {
-        const errorData = await downloadResp.text().catch(() => '');
-        throw new Error(`Failed to download video content: ${downloadResp.status} ${downloadResp.statusText} ${errorData}`);
-    }
-
-    const arrayBuffer = await downloadResp.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-
-    await ensureOutputDirExists();
-
-    const filename = `${jobId}-sora.mp4`;
-    const filepath = path.join(outputDir, filename);
-    await fs.writeFile(filepath, buffer);
-
-    return { filename, path: `/api/image/${filename}` };
-}
-
+// Starts a video. Returns a job id for the client to poll.
 export async function POST(request: NextRequest) {
-    if (!config.apiKey || !config.baseURL) {
-        console.error('API credentials are missing for Sora video generation.');
-        return NextResponse.json({ error: 'Server configuration error: API credentials are incomplete.' }, { status: 500 });
+    const config = videoConfig();
+    if (!config) return notConfigured();
+
+    let form: FormData;
+    try {
+        form = await request.formData();
+    } catch {
+        return NextResponse.json({ error: 'Invalid request.' }, { status: 400 });
+    }
+    const denied = passwordError(form.get('passwordHash') as string | null);
+    if (denied) return denied;
+
+    const image = form.get('image');
+    const hasImage = image instanceof File && image.size > 0;
+    const typed = ((form.get('prompt') as string | null) ?? '').trim();
+    const prompt = typed || (hasImage ? DEFAULT_MOTION_PROMPT : '');
+    const client = clientInfo(request.headers);
+    const log = (status: VideoGenerationLogEntry['status'], extra: Partial<VideoGenerationLogEntry> = {}) =>
+        logVideoGeneration({
+            time: new Date().toISOString(),
+            kind: 'video',
+            status,
+            model: config.model,
+            prompt,
+            seconds: config.seconds,
+            resolution: config.resolution,
+            references: hasImage ? 1 : 0,
+            files: [],
+            estimated_cost_usd: 0,
+            ...client,
+            ...extra
+        });
+
+    if (!prompt) return NextResponse.json({ error: 'Describe the video you want.' }, { status: 400 });
+    if (prompt.length > MAX_VIDEO_PROMPT_LENGTH) {
+        return NextResponse.json(
+            { error: `Keep the prompt under ${MAX_VIDEO_PROMPT_LENGTH} characters.` },
+            { status: 400 }
+        );
+    }
+    if (hasImage && image.size > MAX_START_IMAGE_BYTES) {
+        return NextResponse.json({ error: 'That image is too large to animate.' }, { status: 400 });
+    }
+
+    let frame: Buffer | null = null;
+    if (hasImage) {
+        try {
+            frame = await sharp(Buffer.from(await image.arrayBuffer()))
+                .rotate()
+                .resize({
+                    width: START_IMAGE_MAX_SIDE,
+                    height: START_IMAGE_MAX_SIDE,
+                    fit: 'inside',
+                    withoutEnlargement: true
+                })
+                .flatten({ background: '#ffffff' })
+                .jpeg({ quality: 90 })
+                .toBuffer();
+        } catch {
+            return NextResponse.json({ error: 'That image could not be read.' }, { status: 400 });
+        }
+    }
+
+    const ipLimit = ipLimiter.take('video', limitKeyForIp(client.ip));
+    if (!ipLimit.allowed) {
+        await log('rate_limited', { error: ipLimit.message });
+        return NextResponse.json(
+            { error: ipLimit.message, retryAfter: ipLimit.retryAfter },
+            { status: 429, headers: { 'Retry-After': String(ipLimit.retryAfter) } }
+        );
     }
 
     try {
-        await ensureOutputDirExists();
-
-        const formData = await request.formData();
-
-        if (process.env.APP_PASSWORD) {
-            const clientPasswordHash = formData.get('passwordHash') as string | null;
-            if (!clientPasswordHash) {
-                return NextResponse.json({ error: 'Unauthorized: Missing password hash.' }, { status: 401 });
-            }
-            const serverPasswordHash = sha256(process.env.APP_PASSWORD);
-            if (clientPasswordHash !== serverPasswordHash) {
-                return NextResponse.json({ error: 'Unauthorized: Invalid password.' }, { status: 401 });
-            }
-        }
-
-        const ipLimit = ipLimiter.take('video', limitKeyForIp(clientInfo(request.headers).ip));
-        if (!ipLimit.allowed) {
-            return NextResponse.json(
-                { error: ipLimit.message, retryAfter: ipLimit.retryAfter },
-                { status: 429, headers: { 'Retry-After': String(ipLimit.retryAfter) } }
-            );
-        }
-
-        const prompt = (formData.get('prompt') as string | null)?.trim();
-        const size = (formData.get('size') as string | null) || '1280x720';
-        const secondsInput = parseInt((formData.get('seconds') as string) || '8', 10);
-        const allowedSeconds = [4, 8, 12];
-        const seconds = allowedSeconds.includes(secondsInput)
-            ? secondsInput
-            : allowedSeconds.reduce((prev, curr) => (Math.abs(curr - secondsInput) < Math.abs(prev - secondsInput) ? curr : prev), 8);
-        const referenceImage = formData.get('reference_image');
-        const hasReferenceImage = referenceImage instanceof File && referenceImage.size > 0;
-
-        if (!prompt) {
-            return NextResponse.json({ error: 'Prompt is required.' }, { status: 400 });
-        }
-
-        if (!validSizes.has(size)) {
-            return NextResponse.json({ error: 'Invalid size. Supported sizes are 1280x720 and 720x1280.' }, { status: 400 });
-        }
-
-        if (referenceImage && !(referenceImage instanceof File)) {
-            return NextResponse.json({ error: 'Invalid reference image payload.' }, { status: 400 });
-        }
-
-        const baseUrl = getBaseUrl();
-        const createUrl = `${baseUrl}/videos`;
-
-        const { width, height } = parseSize(size);
-        let resizedFile: File | null = null;
-
-        if (hasReferenceImage) {
-            const refArrayBuffer = await (referenceImage as File).arrayBuffer();
-            const refBuffer = Buffer.from(refArrayBuffer);
-
-            const resizedBuffer = await sharp(refBuffer)
-                .resize(width, height, { fit: 'cover', position: 'center' })
-                .png()
-                .toBuffer();
-
-            resizedFile = new File([new Uint8Array(resizedBuffer)], 'reference.png', { type: 'image/png' });
-        }
-
-        const requestForm = new FormData();
-        requestForm.append('model', soraModel);
-        requestForm.append('prompt', prompt);
-        requestForm.append('size', size);
-        requestForm.append('seconds', seconds.toString());
-        if (resizedFile) {
-            requestForm.append('input_reference', resizedFile, resizedFile.name);
-        }
-
-        const createResp = await fetch(createUrl, {
-            method: 'POST',
-            headers: {
-                'api-key': config.apiKey || ''
-            },
-            body: requestForm
+        const jobId = await submitVideo(config, {
+            prompt,
+            imageDataUri: frame ? `data:image/jpeg;base64,${frame.toString('base64')}` : undefined,
+            aspectRatio: aspectRatioForSize(form.get('size') as string | null)
         });
-
-        if (!createResp.ok) {
-            const errorData = await createResp.text().catch(() => '');
-            console.error('Video creation error:', errorData);
-            return NextResponse.json(
-                { error: `Video creation failed: ${createResp.status} ${createResp.statusText}` },
-                { status: createResp.status }
-            );
+        if (frame) {
+            // A small still for the gallery, since the server has no way to grab a video frame.
+            await fs.mkdir(outputDir, { recursive: true });
+            await sharp(frame)
+                .resize({ width: 480, height: 480, fit: 'inside' })
+                .webp({ quality: 80 })
+                .toFile(path.join(outputDir, posterFilename(jobId)))
+                .catch((error) => console.error('Could not save video poster:', error));
         }
-
-        const creationJson = await createResp.json();
-        const jobId = creationJson.id as string | undefined;
-
-        if (!jobId) {
-            return NextResponse.json({ error: 'Video creation did not return a job id.' }, { status: 500 });
-        }
-
-        return NextResponse.json({
-            jobId,
-            status: 'running'
+        await log('ok', {
+            files: [videoFilename(jobId)],
+            estimated_cost_usd: estimateVideoCost(config.seconds, config.resolution)
         });
-    } catch (error: unknown) {
-        console.error('Error in /api/video:', error);
-        const message = error instanceof Error ? error.message : 'Unexpected server error.';
-        return NextResponse.json({ error: message }, { status: 500 });
+        return NextResponse.json({ jobId, seconds: config.seconds });
+    } catch (error) {
+        const { message, response } = errorResponse(error, 'The video could not be started.');
+        await log('error', { error: message });
+        return response;
     }
 }
 
+// Reports progress; once the video is finished it is saved here and its filename returned.
 export async function GET(request: NextRequest) {
-    if (!config.apiKey || !config.baseURL) {
-        console.error('API credentials are missing for Sora video polling.');
-        return NextResponse.json({ error: 'Server configuration error: API credentials are incomplete.' }, { status: 500 });
-    }
-
+    const config = videoConfig();
+    if (!config) return notConfigured();
+    const denied = passwordError(request.headers.get('x-password-hash'));
+    if (denied) return denied;
     const jobId = request.nextUrl.searchParams.get('jobId');
+    if (!isVideoJobId(jobId)) return NextResponse.json({ error: 'A valid jobId is required.' }, { status: 400 });
 
-    if (!jobId) {
-        return NextResponse.json({ error: 'jobId is required.' }, { status: 400 });
-    }
+    const filename = videoFilename(jobId);
+    const filepath = path.join(outputDir, filename);
+    const done = async () =>
+        NextResponse.json({
+            status: 'completed',
+            filename,
+            poster: (await exists(path.join(outputDir, posterFilename(jobId)))) ? posterFilename(jobId) : null,
+            model: config.model,
+            seconds: config.seconds
+        });
 
     try {
-        const baseUrl = getBaseUrl();
-
-        const statusJson = await fetchVideoStatus(jobId);
-        const status = (statusJson.status as string | undefined)?.toLowerCase();
-
-        if (!status || status === 'queued' || status === 'in_progress' || status === 'running' || status === 'notstarted' || status === 'processing') {
-            return NextResponse.json({ status: status || 'queued' });
-        }
-
-        if (status === 'succeeded' || status === 'completed') {
-            try {
-                await ensureOutputDirExists();
-                const filename = `${jobId}-sora.mp4`;
-                const filepath = path.join(outputDir, filename);
-
-                let alreadyExists = false;
-                try {
-                    await fs.access(filepath);
-                    alreadyExists = true;
-                } catch {
-                    alreadyExists = false;
-                }
-
-                if (!alreadyExists) {
-                    await downloadVideo(jobId, baseUrl);
-                }
-
-                return NextResponse.json({
-                    status: 'succeeded',
-                    videos: [{ filename, path: `/api/image/${filename}` }],
-                    model: soraModel
-                });
-            } catch (downloadError: unknown) {
-                console.error('Error downloading completed video:', downloadError);
-                const message = downloadError instanceof Error ? downloadError.message : 'Failed to download completed video.';
-                return NextResponse.json({ error: message }, { status: 500 });
-            }
-        }
-
-        const failureReason = (statusJson.error && statusJson.error.message) || 'Video generation did not complete successfully.';
-        return NextResponse.json({ status, error: failureReason }, { status: 500 });
-    } catch (error: unknown) {
-        console.error('Error polling /api/video status:', error);
-        const message = error instanceof Error ? error.message : 'Unexpected server error while polling video.';
-        return NextResponse.json({ error: message }, { status: 500 });
+        if (await exists(filepath)) return done();
+        const status = await videoStatus(config, jobId);
+        if (status !== 'completed') return NextResponse.json({ status });
+        const video = await downloadVideo(config, jobId);
+        await fs.mkdir(outputDir, { recursive: true });
+        // Write under a temporary name so a half-written file is never served.
+        const temporary = `${filepath}.${crypto.randomUUID()}.part`;
+        await fs.writeFile(temporary, video);
+        await fs.rename(temporary, filepath);
+        return done();
+    } catch (error) {
+        return errorResponse(error, 'The video could not be made.').response;
     }
+}
+
+// Cancels a job the user gave up on.
+export async function DELETE(request: NextRequest) {
+    const config = videoConfig();
+    if (!config) return notConfigured();
+    const denied = passwordError(request.headers.get('x-password-hash'));
+    if (denied) return denied;
+    const jobId = request.nextUrl.searchParams.get('jobId');
+    if (!isVideoJobId(jobId)) return NextResponse.json({ error: 'A valid jobId is required.' }, { status: 400 });
+    await cancelVideo(config, jobId);
+    return NextResponse.json({ cancelled: true });
 }
