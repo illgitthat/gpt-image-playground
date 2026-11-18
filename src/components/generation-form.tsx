@@ -75,7 +75,7 @@ type GenerationFormProps = {
 // One-tap starting points shown while the prompt is empty.
 const PROMPT_IDEAS: { label: string; prompt: string }[] = [
     {
-        label: 'Cozy cabin',
+        label: 'Cabin',
         prompt: 'A cozy log cabin in a snowy pine forest at dusk, warm light glowing from the windows, soft falling snow, cinematic photo'
     },
     {
@@ -83,11 +83,11 @@ const PROMPT_IDEAS: { label: string; prompt: string }[] = [
         prompt: 'A die-cut sticker of a cheerful corgi wearing sunglasses, bold outlines, flat bright colors, white border, plain background'
     },
     {
-        label: 'Movie poster',
+        label: 'Poster',
         prompt: 'A retro 1980s sci-fi movie poster of a lone astronaut facing a giant glowing planet, painted style, bold title lettering that reads "LAST ORBIT"'
     },
     {
-        label: 'Tiny world',
+        label: 'Mini',
         prompt: 'A miniature diorama of a busy ramen shop inside a glass jar, tilt-shift macro photo, warm lantern light, rich detail'
     }
 ];
@@ -400,7 +400,7 @@ export function GenerationForm({
                         </div>
                         <Textarea
                             id='prompt'
-                            placeholder='e.g., A photorealistic cat astronaut floating in space'
+                            placeholder='Describe an image, or pick an idea below'
                             value={prompt}
                             onChange={(e) => setPrompt(e.target.value)}
                             onKeyDown={(event) => {
@@ -418,14 +418,17 @@ export function GenerationForm({
                             }`}
                         />
                         {!prompt && !isLoading && !isSurprising && (
-                            <div className='flex flex-wrap items-center gap-1.5 pt-1'>
-                                <span className='text-muted-foreground text-xs'>Try:</span>
+                            <div
+                                role='group'
+                                aria-label='Prompt ideas'
+                                className='grid grid-cols-4 gap-1.5 pt-1 sm:flex sm:items-center'>
+                                <span className='text-muted-foreground text-xs max-sm:hidden'>Try:</span>
                                 {PROMPT_IDEAS.map((idea) => (
                                     <button
                                         key={idea.label}
                                         type='button'
                                         onClick={() => setPrompt(idea.prompt)}
-                                        className='border-border bg-background text-foreground/80 hover:bg-muted/60 hover:text-foreground focus-visible:ring-ring rounded-full border px-3 py-1.5 text-xs transition-colors focus-visible:ring-2 focus-visible:outline-none'>
+                                        className='border-border bg-background text-foreground/80 hover:bg-muted/60 hover:text-foreground focus-visible:ring-ring truncate rounded-full border px-2 py-1.5 text-center text-xs transition-colors focus-visible:ring-2 focus-visible:outline-none sm:px-3'>
                                         {idea.label}
                                     </button>
                                 ))}
