@@ -370,7 +370,10 @@ export function HistoryPanel({
                                             <p
                                                 className='min-w-0 flex-1 truncate text-[11px]'
                                                 title={`${new Date(item.timestamp).toLocaleString()} · took ${formatDuration(item.durationMs)}`}>
-                                                {formatShortDate(item.timestamp)} · {formatDuration(item.durationMs)}
+                                                <span className='max-sm:hidden'>
+                                                    {formatShortDate(item.timestamp)} ·{' '}
+                                                </span>
+                                                {formatDuration(item.durationMs)}
                                             </p>
                                             {!isVideo && firstMedia && onSendToEdit && (
                                                 <Tooltip>

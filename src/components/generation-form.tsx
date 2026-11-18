@@ -9,14 +9,12 @@ import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { DEFAULT_IMAGE_MODEL, type ImageModel } from '@/lib/cost-utils';
 import { compressImagesForUpload } from '@/lib/image-compress';
-import { DEFAULT_OUTPUT_COMPRESSION, IMAGE_REQUESTS_PER_MINUTE, MAX_IMAGES } from '@/lib/image-options';
+import { DEFAULT_OUTPUT_COMPRESSION, MAX_IMAGES } from '@/lib/image-options';
 import {
     Square,
     RectangleHorizontal,
     RectangleVertical,
     Sparkles,
-    Tally1,
-    Tally2,
     Loader2,
     Lock,
     LockOpen,
@@ -555,27 +553,24 @@ export function GenerationForm({
                         {imageAddError && <p className='text-destructive text-xs'>{imageAddError}</p>}
                     </div>
 
-                    <div className='space-y-2'>
-                        <Label className='text-foreground'>Images</Label>
+                    <div className='flex items-center justify-between gap-3'>
+                        <Label className='text-foreground'>Number of images</Label>
                         <RadioGroup
                             aria-label='Number of images'
                             value={String(n[0])}
                             onValueChange={(value) => setN([Number(value)])}
                             disabled={isLoading}
-                            className='grid grid-cols-2 gap-2'>
+                            className='border-border bg-muted/30 flex gap-0.5 rounded-md border p-0.5'>
                             {Array.from({ length: MAX_IMAGES }, (_, index) => index + 1).map((count) => (
-                                <SegmentedOption
+                                <Label
                                     key={count}
-                                    id={`count-${count}`}
-                                    value={String(count)}
-                                    label={`${count} image${count === 1 ? '' : 's'}`}
-                                    Icon={count === 1 ? Tally1 : Tally2}
-                                />
+                                    htmlFor={`count-${count}`}
+                                    className='text-muted-foreground hover:text-foreground has-[[data-state=checked]]:bg-primary has-[[data-state=checked]]:text-primary-foreground has-[:focus-visible]:ring-ring flex h-9 min-w-12 cursor-pointer items-center justify-center rounded-[5px] px-3 text-sm font-medium tabular-nums transition-colors has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-50 has-[:focus-visible]:ring-2'>
+                                    <RadioGroupItem value={String(count)} id={`count-${count}`} className='sr-only' />
+                                    {count}
+                                </Label>
                             ))}
                         </RadioGroup>
-                        <p className='text-muted-foreground text-xs'>
-                            Up to {IMAGE_REQUESTS_PER_MINUTE} images per minute.
-                        </p>
                     </div>
 
                     <div className='space-y-2'>
