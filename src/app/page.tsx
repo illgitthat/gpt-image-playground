@@ -501,10 +501,14 @@ export default function HomePage() {
 
         let referenceImagesPayload: { dataUrl: string; alt?: string }[] = [];
 
-        if (genReferenceImages.length > 0) {
+        // Ideas are grounded in what is on the stage as well as any attached photos.
+        if (genReferenceImages.length > 0 || editTarget) {
             try {
+                const files = editTarget
+                    ? [await loadImageFile(editTarget.filename), ...genReferenceImages].slice(0, MAX_REFERENCE_IMAGES)
+                    : genReferenceImages;
                 referenceImagesPayload = await Promise.all(
-                    genReferenceImages.map(async (file) => ({
+                    files.map(async (file) => ({
                         dataUrl: await fileToDataUrl(file)
                     }))
                 );
@@ -525,7 +529,7 @@ export default function HomePage() {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    mode: 'generate',
+                    mode: makingVideo ? 'video' : 'generate',
                     passwordHash: isPasswordRequiredByBackend ? clientPasswordHash : undefined,
                     referenceImages: referenceImagesPayload.length ? referenceImagesPayload : undefined
                 })

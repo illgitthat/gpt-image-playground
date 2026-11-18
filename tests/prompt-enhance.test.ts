@@ -146,3 +146,28 @@ describe('prompt reference validation', () => {
         }
     });
 });
+
+describe('surprise prompts', () => {
+    test('image ideas welcome text and never ask for exclusions', () => {
+        const { instructions } = buildSurpriseMeInput('generate');
+        expect(instructions).toContain('Text is welcome');
+        expect(instructions).toContain('Never add exclusions');
+        expect(instructions).not.toContain('exclude other text');
+    });
+
+    test('video ideas ask for one shot with motion, camera and sound', () => {
+        const { instructions, input } = buildSurpriseMeInput('video');
+        expect(instructions).toContain('short video clip');
+        expect(instructions).toContain('one camera move');
+        expect(instructions).toContain('sound');
+        expect(input).toContain('video prompt');
+    });
+
+    test('animating an image grounds the idea in the first image only', () => {
+        const images = [1, 2].map((n) => ({ dataUrl: `data:image/png;base64,${n}` }));
+        const { instructions, input } = buildSurpriseMeInput('video', { referenceImages: images });
+        expect(instructions).toContain('first frame');
+        expect(JSON.stringify(input)).toContain('data:image/png;base64,1');
+        expect(JSON.stringify(input)).not.toContain('data:image/png;base64,2');
+    });
+});
