@@ -1,12 +1,12 @@
 'use client';
 
-import { GenerationForm, type GenerationFormData } from '@/components/generation-form';
-import { HistoryPanel } from '@/components/history-panel';
-import { ImageOutput } from '@/components/image-output';
+import { Composer, type GenerationFormData } from '@/components/composer';
+import { Gallery } from '@/components/gallery';
 import { PasswordDialog } from '@/components/password-dialog';
+import { Stage, type PendingGeneration } from '@/components/stage';
 import { ThemeToggle } from '@/components/theme-toggle';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
     Dialog,
     DialogContent,
@@ -15,15 +15,17 @@ import {
     DialogHeader,
     DialogTitle
 } from '@/components/ui/dialog';
-import { VideoForm, type VideoFormData } from '@/components/video-form';
-import { VideoOutput } from '@/components/video-output';
-import { calculateSoraVideoCost, type CostDetails, type ImageModel } from '@/lib/cost-utils';
+import type { VideoFormData } from '@/components/video-form';
+import { calculateSoraVideoCost, DEFAULT_IMAGE_MODEL, type CostDetails, type ImageModel } from '@/lib/cost-utils';
 import { db, type ImageRecord } from '@/lib/db';
 import { compressImageForUpload } from '@/lib/image-compress';
-import { MAX_REFERENCE_IMAGES } from '@/lib/image-options';
+import { DEFAULT_OUTPUT_COMPRESSION, MAX_REFERENCE_IMAGES } from '@/lib/image-options';
 import { isGeneratedImage, readImageStream, type GeneratedImage } from '@/lib/image-stream';
 import { EMPTY_PROMPT_DRAFT, promptDraftReducer } from '@/lib/prompt-draft';
+import { cn } from '@/lib/utils';
 import { useLiveQuery } from 'dexie-react-hooks';
+import { Lock, LockOpen, Plus, X } from 'lucide-react';
+import Image from 'next/image';
 import * as React from 'react';
 
 type HistoryImage = {
@@ -69,13 +71,36 @@ if (explicitModeClient === 'fs') {
 } else {
     effectiveStorageModeClient = 'fs';
 }
+// One-tap starting points on the empty home screen.
+const EXAMPLES: { label: string; image: string; prompt: string }[] = [
+    {
+        label: 'Snowy cabin',
+        image: '/examples/cabin.webp',
+        prompt: 'A cozy log cabin in a snowy pine forest at dusk, warm light glowing from the windows, soft falling snow, cinematic photo'
+    },
+    {
+        label: 'Corgi sticker',
+        image: '/examples/sticker.webp',
+        prompt: 'A die-cut sticker of a cheerful corgi wearing sunglasses, bold outlines, flat bright colors, white border, plain background'
+    },
+    {
+        label: 'Retro poster',
+        image: '/examples/poster.webp',
+        prompt: 'A retro 1980s sci-fi movie poster of a lone astronaut facing a giant glowing planet, painted style, bold title lettering that reads "LAST ORBIT"'
+    },
+    {
+        label: 'Ramen in a jar',
+        image: '/examples/jar.webp',
+        prompt: 'A miniature diorama of a busy ramen shop inside a glass jar, tilt-shift macro photo, warm lantern light, rich detail'
+    }
+];
+
 console.log(
     `Client Effective Storage Mode: ${effectiveStorageModeClient} (Explicit: ${explicitModeClient || 'unset'}, Vercel Env: ${vercelEnvClient || 'N/A'})`
 );
 
 export default function HomePage() {
     const [mode, setMode] = React.useState<'generate' | 'video'>('generate');
-    const outputPanelRef = React.useRef<HTMLDivElement>(null);
     const [isPasswordRequiredByBackend, setIsPasswordRequiredByBackend] = React.useState<boolean | null>(null);
     const [clientPasswordHash, setClientPasswordHash] = React.useState<string | null>(null);
     const [isLoading, setIsLoading] = React.useState(false);
@@ -88,7 +113,11 @@ export default function HomePage() {
     const [error, setError] = React.useState<string | null>(null);
     const [genPromptEnhanceError, setGenPromptEnhanceError] = React.useState<string | null>(null);
     const [latestImageBatch, setLatestImageBatch] = React.useState<{ path: string; filename: string }[] | null>(null);
-    const [imageOutputView, setImageOutputView] = React.useState<'grid' | number>('grid');
+    // The stage shows one history entry; follow-up prompts edit its selected image while `editStage` is on.
+    const [stageEntry, setStageEntry] = React.useState<HistoryMetadata | null>(null);
+    const [stageIndex, setStageIndex] = React.useState(0);
+    const [editStage, setEditStage] = React.useState(false);
+    const [pending, setPending] = React.useState<PendingGeneration | null>(null);
     const [history, setHistory] = React.useState<HistoryMetadata[]>([]);
     const [isInitialLoad, setIsInitialLoad] = React.useState(true);
     const [blobUrlCache, setBlobUrlCache] = React.useState<Record<string, string>>({});
@@ -797,24 +826,27 @@ export default function HomePage() {
             ...(references.length ? { referenceImageFilenames: references } : {})
         };
         setLatestImageBatch(processedImages);
-        setImageOutputView(processedImages.length > 1 ? 'grid' : 0);
+        setStageEntry(entry);
+        setStageIndex(0);
+        // The result becomes the thing the next prompt changes; the composer starts clean.
+        setEditStage(true);
+        setGenPrompt('');
+        setGenReferenceImages([]);
+        setGenReferenceImagePreviewUrls([]);
         setHistory((previous) => [entry, ...previous]);
         if (failures.length) setError(failures.join(' '));
     };
 
-    const handleApiCall = async (formData: GenerationFormData) => {
+    const handleApiCall = async (formData: GenerationFormData, baseUrl: string | null = null) => {
         if (imageRequestRef.current) return;
-        // On stacked (mobile) layouts the result panel is below the form; bring it into view.
-        if (window.matchMedia('(max-width: 1023px)').matches) {
-            outputPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
         const startTime = Date.now();
         let durationMs = 0;
 
         setIsLoading(true);
         setError(null);
-        setLatestImageBatch(null);
-        setImageOutputView('grid');
+        // The current image stays in state so a failed or cancelled request brings it back.
+        setPending({ prompt: formData.prompt, size: formData.size, count: formData.n, baseUrl });
+        window.scrollTo({ top: 0, behavior: 'smooth' });
         setStreamingPreviewImages(new Map());
         setCompletedImageCount(0);
         setIsCancelling(false);
@@ -827,6 +859,7 @@ export default function HomePage() {
             setPasswordDialogContext('initial');
             setIsPasswordDialogOpen(true);
             setIsLoading(false);
+            setPending(null);
             return;
         }
 
@@ -933,7 +966,6 @@ export default function HomePage() {
                 }
                 await storeImageBatch(formData, result.images, durationMs);
             } else {
-                setLatestImageBatch(null);
                 throw new Error('API response did not contain valid image data or filenames.');
             }
         } catch (err: unknown) {
@@ -942,11 +974,11 @@ export default function HomePage() {
             console.error(`API Call Error after ${durationMs}ms:`, err);
             const errorMessage = err instanceof Error ? err.message : 'An unexpected error occurred.';
             setError(errorMessage);
-            setLatestImageBatch(null);
             setStreamingPreviewImages(new Map());
         } finally {
             if (durationMs === 0) durationMs = Date.now() - startTime;
             setIsLoading(false);
+            setPending(null);
             setIsCancelling(false);
             setStreamingPreviewImages(new Map());
             imageRequestRef.current = null;
@@ -998,7 +1030,10 @@ export default function HomePage() {
                 setVideoViewIndex(0);
             } else {
                 setLatestImageBatch(validAssets.length > 0 ? validAssets : null);
-                setImageOutputView(validAssets.length > 1 ? 'grid' : 0);
+                setStageEntry(validAssets.length > 0 ? item : null);
+                setStageIndex(0);
+                setEditStage(validAssets.length > 0);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
                 if (!options.skipModeChange) setMode(item.mode === 'video' ? 'video' : 'generate');
             }
         });
@@ -1030,8 +1065,9 @@ export default function HomePage() {
         setIsClearHistoryDialogOpen(false);
         setHistory([]);
         setLatestImageBatch(null);
+        setStageEntry(null);
+        setEditStage(false);
         setLatestVideoBatch(null);
-        setImageOutputView('grid');
         setVideoViewIndex(0);
         setError(null);
 
@@ -1058,74 +1094,18 @@ export default function HomePage() {
         }
     };
 
-    const handleUseAsReference = async (filename: string) => {
-        if (isSendingToRef) return;
-        setIsSendingToRef(true);
-        setError(null);
-
-        const alreadyExists = genReferenceImages.some((file) => file.name === filename);
-        if (alreadyExists) {
-            console.log(`Image ${filename} already in reference list.`);
-            setIsSendingToRef(false);
-            return;
+    // The stored image as a File, for sending back to the model as the thing to edit.
+    const loadImageFile = async (filename: string): Promise<File> => {
+        let blob: Blob | undefined;
+        if (effectiveStorageModeClient === 'indexeddb') {
+            blob = allDbImages?.find((img) => img.filename === filename)?.blob;
+            if (!blob) throw new Error('That image is no longer stored in this browser.');
+        } else {
+            const response = await fetch(`/api/image/${filename}`);
+            if (!response.ok) throw new Error('That image could not be loaded. It may have been deleted.');
+            blob = await response.blob();
         }
-
-        if (genReferenceImages.length >= MAX_REFERENCE_IMAGES) {
-            setError(`Cannot add more than ${MAX_REFERENCE_IMAGES} reference images.`);
-            setIsSendingToRef(false);
-            return;
-        }
-
-        console.log(`Adding image ${filename} as reference...`);
-
-        try {
-            let blob: Blob | undefined;
-            let mimeType: string = 'image/png';
-
-            if (effectiveStorageModeClient === 'indexeddb') {
-                const record = allDbImages?.find((img) => img.filename === filename);
-                if (record?.blob) {
-                    blob = record.blob;
-                    mimeType = blob.type || mimeType;
-                } else {
-                    throw new Error(`Image ${filename} not found in local database.`);
-                }
-            } else {
-                const response = await fetch(`/api/image/${filename}`);
-                if (!response.ok) {
-                    throw new Error(`Failed to fetch image: ${response.statusText}`);
-                }
-                blob = await response.blob();
-                mimeType = response.headers.get('Content-Type') || mimeType;
-            }
-
-            if (!blob) {
-                throw new Error(`Could not retrieve image data for ${filename}.`);
-            }
-
-            const newFile = new File([blob], filename, { type: mimeType });
-
-            // Read data URL for preview
-            const reader = new FileReader();
-            const previewUrl = await new Promise<string>((resolve, reject) => {
-                reader.onloadend = () => resolve(reader.result as string);
-                reader.onerror = () => reject(new Error('Failed to read image'));
-                reader.readAsDataURL(newFile);
-            });
-
-            setGenReferenceImages((prev) => [...prev, newFile]);
-            setGenReferenceImagePreviewUrls((prev) => [...prev, previewUrl]);
-
-            setMode('generate');
-
-            console.log(`Successfully added ${filename} as reference image.`);
-        } catch (err: unknown) {
-            console.error('Error adding image as reference:', err);
-            const errorMessage = err instanceof Error ? err.message : 'Failed to add image as reference.';
-            setError(errorMessage);
-        } finally {
-            setIsSendingToRef(false);
-        }
+        return new File([blob], filename, { type: blob.type || 'image/png' });
     };
 
     const handleSendToVideo = async (filename: string) => {
@@ -1226,6 +1206,8 @@ export default function HomePage() {
             setHistory((prevHistory) => prevHistory.filter((h) => h.timestamp !== timestamp));
             if (latestImageBatch && latestImageBatch.some((img) => filenamesToDelete.includes(img.filename))) {
                 setLatestImageBatch(null); // Clear current view if it contained deleted images
+                setStageEntry(null);
+                setEditStage(false);
             }
         } catch (e: unknown) {
             console.error('Error during item deletion:', e);
@@ -1269,7 +1251,7 @@ export default function HomePage() {
     };
 
     const finishHistoryPromptReuse = () => {
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+        document.getElementById('prompt')?.focus();
     };
 
     const handleReusePrompt = (prompt: string, targetMode: 'generate' | 'edit' | 'video') => {
@@ -1280,9 +1262,6 @@ export default function HomePage() {
     const handleReuseWithReferences = async (prompt: string, referenceFilenames: string[]) => {
         applyHistoryPrompt(prompt, 'generate');
         setError(null);
-        setLatestImageBatch(null);
-        setImageOutputView('grid');
-        setStreamingPreviewImages(new Map());
 
         const files: File[] = [];
         const previewUrls: string[] = [];
@@ -1313,8 +1292,61 @@ export default function HomePage() {
         finishHistoryPromptReuse();
     };
 
+    const stageImage = latestImageBatch?.[stageIndex] ?? latestImageBatch?.[0] ?? null;
+    const editTarget = editStage && stageImage ? stageImage : null;
+    const hasStage = pending !== null || stageImage !== null;
+
+    const handleSubmit = async () => {
+        if (isLoading || !genPrompt.trim()) return;
+        let referenceImages = genReferenceImages;
+        if (editTarget) {
+            try {
+                const base = await loadImageFile(editTarget.filename);
+                referenceImages = [base, ...genReferenceImages].slice(0, MAX_REFERENCE_IMAGES);
+            } catch (err) {
+                setError(err instanceof Error ? err.message : 'That image could not be loaded.');
+                return;
+            }
+        }
+        await handleApiCall(
+            {
+                prompt: genPrompt,
+                n: genN[0],
+                size: genSize,
+                // Model and output settings are fixed defaults; people only choose shape and count.
+                quality: 'auto',
+                output_format: 'webp',
+                output_compression: DEFAULT_OUTPUT_COMPRESSION,
+                background: 'auto',
+                moderation: 'low',
+                model: DEFAULT_IMAGE_MODEL,
+                referenceImages
+            },
+            editTarget?.path ?? null
+        );
+    };
+
+    const startNewImage = () => {
+        if (isLoading) return;
+        setLatestImageBatch(null);
+        setStageEntry(null);
+        setEditStage(false);
+        setError(null);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        requestAnimationFrame(() => document.getElementById('prompt')?.focus());
+    };
+
+    // Bring a finished image's prompt (and the images it was made from) back into the composer.
+    const handleReuseStagePrompt = () => {
+        if (!stageEntry) return;
+        setEditStage(false);
+        const references = stageEntry.referenceImageFilenames ?? [];
+        if (references.length > 0) handleReuseWithReferences(stageEntry.prompt, references);
+        else handleReusePrompt(stageEntry.prompt, 'generate');
+    };
+
     return (
-        <main className='bg-background text-foreground flex min-h-screen flex-col items-center px-5 py-8 md:px-10 md:py-12 lg:px-16 lg:py-16'>
+        <main className='text-foreground relative flex min-h-dvh flex-col items-center px-4 pb-10 sm:px-8'>
             <PasswordDialog
                 isOpen={isPasswordDialogOpen}
                 onOpenChange={setIsPasswordDialogOpen}
@@ -1329,11 +1361,9 @@ export default function HomePage() {
             <Dialog open={isClearHistoryDialogOpen} onOpenChange={setIsClearHistoryDialogOpen}>
                 <DialogContent>
                     <DialogHeader>
-                        <DialogTitle>Clear all history?</DialogTitle>
+                        <DialogTitle>Clear all your images?</DialogTitle>
                         <DialogDescription>
-                            {effectiveStorageModeClient === 'indexeddb'
-                                ? 'This permanently removes every history entry and deletes all locally stored images from IndexedDB. This cannot be undone.'
-                                : 'This permanently removes every history entry and deletes any locally stored reference images from IndexedDB. This cannot be undone.'}
+                            This removes every image from this browser&apos;s list. This cannot be undone.
                         </DialogDescription>
                     </DialogHeader>
                     <DialogFooter>
@@ -1341,7 +1371,42 @@ export default function HomePage() {
                             Cancel
                         </Button>
                         <Button variant='destructive' onClick={performClearHistory}>
-                            Clear history
+                            Clear all
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+            <Dialog
+                open={itemToDeleteConfirm !== null}
+                onOpenChange={(open) => {
+                    if (!open) handleCancelDeletion();
+                }}>
+                <DialogContent className='sm:max-w-md'>
+                    <DialogHeader>
+                        <DialogTitle>Delete this image?</DialogTitle>
+                        <DialogDescription>
+                            {(itemToDeleteConfirm?.images?.length ?? 0) > 1
+                                ? `This deletes all ${itemToDeleteConfirm?.images?.length} images made from this prompt.`
+                                : 'It will be removed for good.'}{' '}
+                            This cannot be undone.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className='flex items-center gap-2 py-1'>
+                        <Checkbox
+                            id='skip-delete-confirm'
+                            checked={dialogCheckboxStateSkipConfirm}
+                            onCheckedChange={(checked) => setDialogCheckboxStateSkipConfirm(!!checked)}
+                        />
+                        <label htmlFor='skip-delete-confirm' className='text-foreground/90 text-sm'>
+                            Don&apos;t ask me again
+                        </label>
+                    </div>
+                    <DialogFooter className='gap-2'>
+                        <Button variant='outline' onClick={handleCancelDeletion}>
+                            Cancel
+                        </Button>
+                        <Button variant='destructive' onClick={handleConfirmDeletion}>
+                            Delete
                         </Button>
                     </DialogFooter>
                 </DialogContent>
@@ -1349,145 +1414,163 @@ export default function HomePage() {
             <div className='sr-only' role='status' aria-live='polite'>
                 {isLoading
                     ? 'Generating image…'
-                    : isGeneratingVideo
-                      ? 'Generating video…'
-                      : isEnhancingGenPrompt
-                        ? 'Enhancing prompt…'
-                        : isSurprisingGen
-                          ? 'Generating a surprise prompt…'
-                          : latestImageBatch && latestImageBatch.length > 0
-                            ? `Generated ${latestImageBatch.length} image${latestImageBatch.length === 1 ? '' : 's'}.`
-                            : ''}
+                    : isEnhancingGenPrompt
+                      ? 'Improving prompt…'
+                      : isSurprisingGen
+                        ? 'Coming up with an idea…'
+                        : latestImageBatch && latestImageBatch.length > 0
+                          ? `Showing ${latestImageBatch.length} image${latestImageBatch.length === 1 ? '' : 's'}.`
+                          : ''}
             </div>
-            <div className='w-full max-w-[1400px] space-y-8'>
-                <header className='rise-in border-border flex items-center justify-between gap-4 border-b pb-4 sm:pb-6 lg:items-end'>
-                    <div className='flex min-w-0 flex-col gap-3'>
-                        <h1 className='font-display text-foreground text-[clamp(1.5rem,7.6vw,2.25rem)] leading-[0.95] tracking-tight sm:text-5xl md:text-6xl lg:text-7xl'>
-                            mai<span className='text-primary italic'>·image</span>
-                            <span className='text-muted-foreground'>/</span>playground
-                        </h1>
-                    </div>
-                    <div className='flex items-center gap-3 text-xs'>
-                        <ThemeToggle />
-                    </div>
-                </header>
-                <div className='grid grid-cols-1 gap-6 lg:grid-cols-2'>
-                    <div className='relative flex flex-col lg:col-span-1 lg:h-[70vh] lg:min-h-[600px]'>
-                        <div className={mode === 'generate' ? 'block h-full w-full' : 'hidden'}>
-                            <GenerationForm
-                                onSubmit={handleApiCall}
-                                isLoading={isLoading}
-                                isPasswordRequiredByBackend={isPasswordRequiredByBackend}
-                                clientPasswordHash={clientPasswordHash}
-                                onOpenPasswordDialog={handleOpenPasswordDialog}
-                                prompt={genPrompt}
-                                setPrompt={setGenPrompt}
-                                n={genN}
-                                setN={setGenN}
-                                size={genSize}
-                                setSize={setGenSize}
-                                referenceImages={genReferenceImages}
-                                referenceImagePreviewUrls={genReferenceImagePreviewUrls}
-                                setReferenceImages={setGenReferenceImages}
-                                setReferenceImagePreviewUrls={setGenReferenceImagePreviewUrls}
-                                maxReferenceImages={MAX_REFERENCE_IMAGES}
-                                streamingAllowed={isStreamingAllowed}
-                                onEnhancePrompt={() => handlePromptEnhance('generate')}
-                                isEnhancingPrompt={isEnhancingGenPrompt}
-                                enhanceError={genPromptEnhanceError}
-                                onSurpriseMe={handleSurpriseMe}
-                                isSurprising={isSurprisingGen}
-                                canUndoPrompt={genPromptDraft.undoText !== null}
-                                onUndoPrompt={() => dispatchGenPrompt({ type: 'undo' })}
-                                onCancel={cancelImageGeneration}
-                                isCancelling={isCancelling}
-                            />
-                        </div>
-                        {/* VideoForm hidden - feature temporarily disabled
-                        <div className={mode === 'video' ? 'block h-full w-full' : 'hidden'}>
-                            <VideoForm
-                                onSubmit={handleVideoSubmit}
-                                isLoading={isGeneratingVideo}
-                                currentMode={mode}
-                                onModeChange={setMode}
-                                isPasswordRequiredByBackend={isPasswordRequiredByBackend}
-                                clientPasswordHash={clientPasswordHash}
-                                onOpenPasswordDialog={handleOpenPasswordDialog}
-                                prompt={videoPrompt}
-                                setPrompt={setVideoPrompt}
-                                size={videoSize}
-                                setSize={setVideoSize}
-                                seconds={videoSeconds}
-                                setSeconds={setVideoSeconds}
-                                referenceImage={videoReferenceImage}
-                                setReferenceImage={setVideoReferenceImage}
-                                referencePreviewUrl={videoReferencePreviewUrl}
-                                setReferencePreviewUrl={setVideoReferencePreviewUrl}
-                                onEnhancePrompt={() => handlePromptEnhance('video')}
-                                isEnhancingPrompt={isEnhancingVideoPrompt}
-                                enhanceError={videoPromptEnhanceError}
-                            />
-                        </div>
-                        */}
-                    </div>
-                    <div
-                        ref={outputPanelRef}
-                        className='flex min-h-[360px] scroll-mt-4 flex-col lg:col-span-1 lg:h-[70vh] lg:min-h-[600px]'>
-                        {error && (
-                            <Alert
-                                variant='destructive'
-                                className='border-destructive/50 bg-destructive/15 text-destructive mb-4'>
-                                <AlertTitle className='text-destructive'>Error</AlertTitle>
-                                <AlertDescription>{error}</AlertDescription>
-                            </Alert>
-                        )}
-                        {/* VideoOutput hidden - feature temporarily disabled
-                        {mode === 'video' ? (
-                            <VideoOutput
-                                videoBatch={latestVideoBatch}
-                                viewIndex={videoViewIndex}
-                                onViewChange={setVideoViewIndex}
-                                isLoading={isGeneratingVideo}
-                                elapsedSeconds={videoElapsedSeconds}
-                            />
-                        ) : (
-                        */}
-                        <ImageOutput
-                            imageBatch={latestImageBatch}
-                            viewMode={imageOutputView}
-                            onViewChange={setImageOutputView}
-                            altText='Generated image output'
-                            isLoading={isLoading}
-                            isPreparing={isSendingToRef}
-                            onSendToEdit={handleUseAsReference}
-                            baseImagePreviewUrl={genReferenceImagePreviewUrls[0] || null}
-                            streamingPreviewImages={streamingPreviewImages}
-                            completedCount={completedImageCount}
-                            loadingCount={genN[0]}
-                            // onSendToVideo={handleSendToVideo} // Disabled - video feature temporarily hidden
-                        />
-                        {/* )} */}
-                    </div>
-                </div>
 
-                <div className='min-h-[450px]'>
-                    <HistoryPanel
-                        history={history}
-                        onSelectImage={handleHistorySelect}
-                        onClearHistory={handleClearHistory}
-                        getImageSrc={getImageSrc}
-                        onDeleteItemRequest={handleRequestDeleteItem}
-                        itemPendingDeleteConfirmation={itemToDeleteConfirm}
-                        onConfirmDeletion={handleConfirmDeletion}
-                        onCancelDeletion={handleCancelDeletion}
-                        deletePreferenceDialogValue={dialogCheckboxStateSkipConfirm}
-                        onDeletePreferenceDialogChange={setDialogCheckboxStateSkipConfirm}
-                        onReusePrompt={handleReusePrompt}
-                        onSendToEdit={handleUseAsReference}
-                        onReuseWithReferences={handleReuseWithReferences}
-                    />
+            <header className='flex w-full max-w-6xl items-center justify-between gap-3 py-4'>
+                <button
+                    type='button'
+                    onClick={startNewImage}
+                    aria-label='MAI Image Playground — start a new image'
+                    className='text-foreground focus-visible:ring-ring flex items-center gap-2 rounded-md text-[15px] font-semibold tracking-tight focus-visible:ring-2 focus-visible:outline-none'>
+                    <span className='bg-primary h-2.5 w-2.5 rounded-full' aria-hidden='true' />
+                    MAI Image
+                </button>
+                <div className='flex items-center gap-2'>
+                    {hasStage && (
+                        <Button
+                            type='button'
+                            variant='outline'
+                            onClick={startNewImage}
+                            disabled={isLoading}
+                            className='border-border h-9 rounded-full bg-transparent px-3.5'>
+                            <Plus className='h-4 w-4' />
+                            New image
+                        </Button>
+                    )}
+                    {isPasswordRequiredByBackend && (
+                        <Button
+                            type='button'
+                            variant='outline'
+                            size='icon'
+                            onClick={handleOpenPasswordDialog}
+                            aria-label='Configure password'
+                            className='border-border text-muted-foreground rounded-full bg-transparent'>
+                            {clientPasswordHash ? <Lock className='h-4 w-4' /> : <LockOpen className='h-4 w-4' />}
+                        </Button>
+                    )}
+                    <ThemeToggle />
                 </div>
+            </header>
+
+            <div
+                className={cn(
+                    'flex w-full max-w-3xl flex-col items-center gap-5',
+                    hasStage ? 'pt-1 sm:pt-4' : 'pt-[16vh] sm:pt-[24vh]'
+                )}>
+                {hasStage ? (
+                    <Stage
+                        images={latestImageBatch}
+                        selectedIndex={stageIndex}
+                        onSelect={setStageIndex}
+                        prompt={stageEntry?.prompt ?? ''}
+                        pending={pending}
+                        completedCount={completedImageCount}
+                        previews={streamingPreviewImages}
+                        isEditing={editTarget !== null}
+                        onEdit={() => {
+                            setEditStage(true);
+                            document.getElementById('prompt')?.focus();
+                        }}
+                        onReusePrompt={handleReuseStagePrompt}
+                        onDelete={() => stageEntry && handleRequestDeleteItem(stageEntry)}
+                    />
+                ) : (
+                    <h1 className='sr-only'>MAI Image Playground</h1>
+                )}
+
+                {error && (
+                    <div
+                        role='alert'
+                        className='border-destructive/40 bg-destructive/10 text-destructive flex w-full items-start gap-3 rounded-2xl border px-4 py-3 text-sm'>
+                        <p className='flex-1 leading-relaxed'>{error}</p>
+                        <button
+                            type='button'
+                            onClick={() => setError(null)}
+                            aria-label='Dismiss'
+                            className='hover:bg-destructive/15 -mr-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full'>
+                            <X className='h-4 w-4' />
+                        </button>
+                    </div>
+                )}
+
+                <Composer
+                    prompt={genPrompt}
+                    setPrompt={setGenPrompt}
+                    onSubmit={handleSubmit}
+                    onCancel={cancelImageGeneration}
+                    isLoading={isLoading}
+                    isCancelling={isCancelling}
+                    size={genSize}
+                    setSize={setGenSize}
+                    count={genN[0]}
+                    setCount={(count) => setGenN([count])}
+                    referenceImages={genReferenceImages}
+                    referencePreviewUrls={genReferenceImagePreviewUrls}
+                    setReferenceImages={setGenReferenceImages}
+                    setReferencePreviewUrls={setGenReferenceImagePreviewUrls}
+                    maxReferenceImages={MAX_REFERENCE_IMAGES}
+                    editTargetUrl={editTarget?.path ?? null}
+                    onStopEditing={() => setEditStage(false)}
+                    onEnhance={() => handlePromptEnhance('generate')}
+                    isEnhancing={isEnhancingGenPrompt}
+                    onSurprise={handleSurpriseMe}
+                    isSurprising={isSurprisingGen}
+                    canUndo={genPromptDraft.undoText !== null}
+                    onUndo={() => dispatchGenPrompt({ type: 'undo' })}
+                    helperError={genPromptEnhanceError}
+                    autoFocus
+                />
+
+                {!hasStage && (
+                    <ul
+                        aria-label='Or start from an example'
+                        className='rise-in grid w-full grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:justify-center'>
+                        {EXAMPLES.map((example) => (
+                            <li key={example.label}>
+                                <button
+                                    type='button'
+                                    onClick={() => {
+                                        setGenPrompt(example.prompt);
+                                        document.getElementById('prompt')?.focus();
+                                    }}
+                                    className='bg-card/70 border-border text-foreground/90 hover:border-foreground/30 hover:bg-card focus-visible:ring-ring flex w-full items-center gap-2.5 rounded-full border py-1.5 pr-4 pl-1.5 text-sm transition-colors focus-visible:ring-2 focus-visible:outline-none'>
+                                    <Image
+                                        src={example.image}
+                                        alt=''
+                                        width={36}
+                                        height={36}
+                                        className='h-9 w-9 shrink-0 rounded-full object-cover'
+                                    />
+                                    <span className='truncate'>{example.label}</span>
+                                </button>
+                            </li>
+                        ))}
+                    </ul>
+                )}
             </div>
+
+            <div className='mt-14 w-full max-w-6xl flex-1'>
+                <Gallery
+                    history={history}
+                    activeTimestamp={stageEntry?.timestamp ?? null}
+                    getImageSrc={getImageSrc}
+                    onOpen={(item) => {
+                        if (!isLoading) handleHistorySelect(item);
+                    }}
+                    onClear={handleClearHistory}
+                />
+            </div>
+
+            <footer className='text-muted-foreground/70 mt-10 w-full max-w-6xl text-center text-xs'>
+                Made with MAI Image 2.7. Prompts and images are saved on this server.
+            </footer>
         </main>
     );
 }

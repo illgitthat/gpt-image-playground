@@ -8,7 +8,6 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-  --font-display: var(--font-instrument-serif);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -45,7 +44,7 @@
 }
 
 :root {
-  --radius: 0.25rem;
+  --radius: 0.75rem;
   --background: oklch(0.985 0.005 85);
   --foreground: oklch(0.18 0.01 70);
   --card: oklch(0.985 0.005 85);
@@ -128,14 +127,11 @@
 }
 
 @layer utilities {
-  .font-display {
-    font-family: var(--font-display), ui-serif, Georgia, serif;
-  }
   .font-mono {
-    font-family: var(--font-mono), ui-monospace, monospace;
+    font-family: var(--font-geist-mono), ui-monospace, monospace;
   }
   .eyebrow {
-    font-family: var(--font-mono), ui-monospace, monospace;
+    font-family: var(--font-geist-mono), ui-monospace, monospace;
     font-size: 0.6875rem;
     letter-spacing: 0.18em;
     text-transform: uppercase;
@@ -149,8 +145,61 @@
   }
   .bg-radial-vignette {
     background:
-      radial-gradient(ellipse 90% 60% at 20% 0%, oklch(0.86 0.20 125 / 0.10), transparent 60%),
-      radial-gradient(ellipse 70% 50% at 100% 100%, oklch(0.70 0.18 30 / 0.08), transparent 60%);
+      radial-gradient(ellipse 80% 55% at 12% -5%, oklch(0.86 0.20 125 / 0.16), transparent 62%),
+      radial-gradient(ellipse 60% 45% at 95% 8%, oklch(0.78 0.14 200 / 0.10), transparent 60%),
+      radial-gradient(ellipse 75% 55% at 85% 105%, oklch(0.74 0.17 45 / 0.13), transparent 62%);
+  }
+  /* The prompt bar: lifted off the page, glowing while in use. */
+  .composer {
+    box-shadow:
+      0 1px 0 0 oklch(1 0 0 / 0.04) inset,
+      0 24px 60px -28px oklch(0 0 0 / 0.45);
+  }
+  .composer:focus-within {
+    border-color: oklch(0.86 0.20 125 / 0.6);
+    box-shadow:
+      0 0 0 4px oklch(0.86 0.20 125 / 0.14),
+      0 24px 60px -24px oklch(0.86 0.20 125 / 0.28);
+  }
+  /* Placeholder frame shown while an image is being made. */
+  .developing {
+    background:
+      radial-gradient(ellipse 70% 60% at 25% 20%, oklch(0.86 0.20 125 / 0.28), transparent 65%),
+      radial-gradient(ellipse 60% 55% at 80% 85%, oklch(0.74 0.17 45 / 0.26), transparent 65%),
+      radial-gradient(ellipse 50% 50% at 70% 20%, oklch(0.78 0.14 200 / 0.20), transparent 65%),
+      var(--card);
+    background-size: 160% 160%;
+    animation: developing-drift 9s ease-in-out infinite alternate;
+  }
+  @keyframes developing-drift {
+    from { background-position: 0% 0%; }
+    to { background-position: 100% 100%; }
+  }
+  .developing-sheen {
+    background: linear-gradient(105deg, transparent 35%, oklch(1 0 0 / 0.10) 50%, transparent 65%);
+    background-size: 250% 100%;
+    animation: developing-sheen 2.6s linear infinite;
+  }
+  @keyframes developing-sheen {
+    from { background-position: 130% 0; }
+    to { background-position: -130% 0; }
+  }
+  .developing-dots::after {
+    content: '';
+    animation: developing-dots 1.6s steps(1, end) infinite;
+  }
+  @keyframes developing-dots {
+    0% { content: ''; }
+    25% { content: '.'; }
+    50% { content: '..'; }
+    75% { content: '...'; }
+  }
+  .stage-in {
+    animation: stage-in 0.55s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+  @keyframes stage-in {
+    from { opacity: 0; transform: translateY(10px) scale(0.985); }
+    to { opacity: 1; transform: none; }
   }
   .dotted-divider {
     background-image: radial-gradient(circle, var(--border) 1px, transparent 1px);
@@ -200,7 +249,10 @@
     .pulse-dot,
     .rise-in,
     .attention-pulse,
-    .nudge {
+    .nudge,
+    .developing,
+    .developing-sheen,
+    .stage-in {
       animation: none !important;
     }
     .attention-pulse {

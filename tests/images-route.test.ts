@@ -333,6 +333,17 @@ describe('image route', () => {
         expect(maiRequests[0].form?.get('model')).toBe('MAI-Image-2.7');
     });
 
+    test('converts WebP references to PNG, which is all the MAI edits API accepts', async () => {
+        const webp = await sharp(Buffer.from(png, 'base64')).webp().toBuffer();
+        const reference = new File([new Uint8Array(webp)], 'earlier-result.webp', { type: 'image/webp' });
+        const response = await send({ model: 'MAI-Image-2.7' }, [reference]);
+        expect(response.status).toBe(200);
+        const sent = maiRequests[0].form?.get('image') as File;
+        expect(sent.type).toBe('image/png');
+        expect(sent.name).toBe('earlier-result.png');
+        expect((await sharp(Buffer.from(await sent.arrayBuffer())).metadata()).format).toBe('png');
+    });
+
     test('streams MAI batches without partial images and encodes JPEG locally', async () => {
         const wire = await (
             await send({
