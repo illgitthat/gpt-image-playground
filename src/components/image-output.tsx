@@ -2,9 +2,9 @@
 
 import { ImageLightbox, type LightboxMedia } from '@/components/image-lightbox';
 import { Button } from '@/components/ui/button';
-import { downloadImage } from '@/lib/image-download';
+import { canShareImages, downloadImage, shareImage } from '@/lib/image-download';
 import { cn } from '@/lib/utils';
-import { Loader2, Send, Grid, Download, Maximize2, ImagePlus } from 'lucide-react';
+import { Loader2, Send, Grid, Download, Maximize2, Share2 } from 'lucide-react';
 import Image from 'next/image';
 import * as React from 'react';
 
@@ -135,6 +135,30 @@ export function ImageOutput({
                 });
             } finally {
                 setIsDownloading(false);
+            }
+        }
+    };
+
+    // Detected after mount so server and client markup match.
+    const [shareSupported, setShareSupported] = React.useState(false);
+    const [isSharing, setIsSharing] = React.useState(false);
+    React.useEffect(() => setShareSupported(canShareImages()), []);
+
+    const handleShare = async () => {
+        if (!isSharing && typeof viewMode === 'number' && imageBatch && imageBatch[viewMode]) {
+            const img = imageBatch[viewMode];
+            setDownloadError(null);
+            setIsSharing(true);
+            try {
+                await shareImage(img.path, img.filename);
+            } catch (error) {
+                console.error('Share failed:', error);
+                setDownloadError({
+                    path: img.path,
+                    message: error instanceof Error ? error.message : 'Sharing failed. Use Download instead.'
+                });
+            } finally {
+                setIsSharing(false);
             }
         }
     };
@@ -338,7 +362,7 @@ export function ImageOutput({
                     {downloadError.message}
                 </p>
             )}
-            <div className='flex h-10 w-full shrink-0 items-center justify-center gap-4'>
+            <div className='flex min-h-10 w-full shrink-0 flex-wrap items-center justify-center gap-x-4 gap-y-2'>
                 {showCarousel && (
                     <div className='border-border bg-muted/50 flex items-center gap-1.5 rounded-md border p-1'>
                         <Button
@@ -403,8 +427,23 @@ export function ImageOutput({
                             showCarousel && viewMode === 'grid' ? 'invisible' : 'visible'
                         )}>
                         <Send className='mr-2 h-4 w-4' />
-                        Use as Reference
+                        <span className='sm:hidden'>Reference</span>
+                        <span className='hidden sm:inline'>Use as Reference</span>
                     </Button>
+                    {shareSupported && (
+                        <Button
+                            variant='outline'
+                            size='sm'
+                            onClick={handleShare}
+                            disabled={!canDownload || isSharing}
+                            className={cn(
+                                'border-border text-foreground/90 hover:bg-muted/60 hover:text-foreground shrink-0 disabled:pointer-events-none disabled:opacity-50',
+                                showCarousel && viewMode === 'grid' ? 'invisible' : 'visible'
+                            )}>
+                            <Share2 className='mr-2 h-4 w-4' />
+                            Share
+                        </Button>
+                    )}
                     {/* Send to Video button hidden - feature temporarily disabled
                     {onSendToVideo && (
                         <Button

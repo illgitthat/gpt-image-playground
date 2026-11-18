@@ -74,6 +74,26 @@ type GenerationFormProps = {
     isCancelling: boolean;
 };
 
+// One-tap starting points shown while the prompt is empty.
+const PROMPT_IDEAS: { label: string; prompt: string }[] = [
+    {
+        label: 'Cozy cabin',
+        prompt: 'A cozy log cabin in a snowy pine forest at dusk, warm light glowing from the windows, soft falling snow, cinematic photo'
+    },
+    {
+        label: 'Sticker',
+        prompt: 'A die-cut sticker of a cheerful corgi wearing sunglasses, bold outlines, flat bright colors, white border, plain background'
+    },
+    {
+        label: 'Movie poster',
+        prompt: 'A retro 1980s sci-fi movie poster of a lone astronaut facing a giant glowing planet, painted style, bold title lettering that reads "LAST ORBIT"'
+    },
+    {
+        label: 'Tiny world',
+        prompt: 'A miniature diorama of a busy ramen shop inside a glass jar, tilt-shift macro photo, warm lantern light, rich detail'
+    }
+];
+
 // A full-width, tappable segment backed by a (visually hidden) radio for keyboard and screen readers.
 const SegmentedOption = ({
     value,
@@ -383,6 +403,13 @@ export function GenerationForm({
                             placeholder='e.g., A photorealistic cat astronaut floating in space'
                             value={prompt}
                             onChange={(e) => setPrompt(e.target.value)}
+                            onKeyDown={(event) => {
+                                // Ctrl/Cmd+Enter submits without leaving the prompt box.
+                                if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+                                    event.preventDefault();
+                                    event.currentTarget.form?.requestSubmit();
+                                }
+                            }}
                             required
                             disabled={isLoading}
                             autoFocus
@@ -390,6 +417,20 @@ export function GenerationForm({
                                 !prompt && !isLoading ? 'attention-pulse' : 'border-border'
                             }`}
                         />
+                        {!prompt && !isLoading && !isSurprising && (
+                            <div className='flex flex-wrap items-center gap-1.5 pt-1'>
+                                <span className='text-muted-foreground text-xs'>Try:</span>
+                                {PROMPT_IDEAS.map((idea) => (
+                                    <button
+                                        key={idea.label}
+                                        type='button'
+                                        onClick={() => setPrompt(idea.prompt)}
+                                        className='border-border bg-background text-foreground/80 hover:bg-muted/60 hover:text-foreground focus-visible:ring-ring rounded-full border px-3 py-1.5 text-xs transition-colors focus-visible:ring-2 focus-visible:outline-none'>
+                                        {idea.label}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
                     </div>
 
                     <div
@@ -561,7 +602,7 @@ export function GenerationForm({
                         </RadioGroup>
                     </div>
                 </CardContent>
-                <CardFooter className='border-border bg-muted/20 gap-2 border-t p-4'>
+                <CardFooter className='border-border bg-muted/20 max-lg:bg-card gap-2 rounded-b-md border-t p-4 max-lg:sticky max-lg:bottom-0 max-lg:z-10'>
                     <Button
                         ref={generateButtonRef}
                         type='submit'

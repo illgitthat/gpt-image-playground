@@ -16,6 +16,7 @@ import {
     DialogClose
 } from '@/components/ui/dialog';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { DEFAULT_IMAGE_MODEL } from '@/lib/cost-utils';
 import { cn } from '@/lib/utils';
 import { Copy, Check, Layers, DollarSign, ImagePlus, Sparkles as SparklesIcon, Trash2, RotateCcw } from 'lucide-react';
 import Image from 'next/image';
@@ -43,6 +44,9 @@ const formatDuration = (ms: number): string => {
     }
     return `${(ms / 1000).toFixed(1)}s`;
 };
+
+const formatShortDate = (timestamp: number): string =>
+    new Date(timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 
 const formatUsd = (value: number): string => {
     if (!Number.isFinite(value)) {
@@ -176,7 +180,7 @@ export function HistoryPanel({
                         <p>Generated images will appear here.</p>
                     </div>
                 ) : (
-                    <div className='grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5'>
+                    <div className='grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 lg:grid-cols-5'>
                         {[...history].map((item, itemIndex) => {
                             const mediaItems = item.videos && item.videos.length > 0 ? item.videos : item.images;
                             const firstMedia = mediaItems?.[0];
@@ -249,48 +253,19 @@ export function HistoryPanel({
                                                 </div>
                                             )}
                                         </button>
-                                        {!isVideo && firstMedia && onSendToEdit && (
-                                            <button
-                                                type='button'
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    onSelectImage(item, { skipModeChange: true });
-                                                    onSendToEdit(firstMedia.filename);
-                                                }}
-                                                title='Use as Reference'
-                                                aria-label='Use as Reference'
-                                                className='border-primary/40 bg-primary/90 text-primary-foreground absolute inset-x-0 bottom-0 z-20 flex items-center justify-center gap-1.5 border-t px-2 py-1.5 font-mono text-[10px] tracking-[0.18em] uppercase opacity-0 backdrop-blur-sm transition-opacity duration-150 group-hover:opacity-100 focus:opacity-100 focus:outline-none'>
-                                                <ImagePlus size={11} />
-                                                Reference
-                                            </button>
-                                        )}
                                     </div>
 
-                                    <div className='border-border bg-background text-muted-foreground space-y-1 rounded-b-md border border-t-0 p-2 text-xs'>
-                                        <p title={`Generated on: ${new Date(item.timestamp).toLocaleString()}`}>
-                                            <span className='text-foreground/90 font-medium'>Time:</span>{' '}
-                                            {formatDuration(item.durationMs)}
-                                        </p>
-                                        <p>
-                                            <span className='text-foreground/90 font-medium'>Model:</span>{' '}
-                                            {item.model || (isVideo ? 'sora-2' : 'Unknown')}
-                                        </p>
+                                    <div className='border-border bg-background text-muted-foreground space-y-1.5 rounded-b-md border border-t-0 p-2 text-xs'>
                                         {isVideo ? (
-                                            <>
-                                                <p>
-                                                    <span className='text-foreground/90 font-medium'>Resolution:</span>{' '}
-                                                    {item.videoSize}
-                                                </p>
-                                                <p>
-                                                    <span className='text-foreground/90 font-medium'>Duration:</span>{' '}
-                                                    {item.videoSeconds ? `${item.videoSeconds}s` : '—'}
-                                                </p>
-                                            </>
-                                        ) : item.quality && item.quality !== 'auto' ? (
-                                            // Older GPT Image entries; MAI has no quality setting.
                                             <p>
-                                                <span className='text-foreground/90 font-medium'>Quality:</span>{' '}
-                                                {item.quality}
+                                                {item.model || 'sora-2'} · {item.videoSize}
+                                                {item.videoSeconds ? ` · ${item.videoSeconds}s` : ''}
+                                            </p>
+                                        ) : item.model && item.model !== DEFAULT_IMAGE_MODEL ? (
+                                            // Older GPT Image entries; everything new is MAI.
+                                            <p className='truncate'>
+                                                {item.model}
+                                                {item.quality && item.quality !== 'auto' ? ` · ${item.quality}` : ''}
                                             </p>
                                         ) : null}
                                         {referenceFilenames.length > 0 && (
@@ -324,7 +299,7 @@ export function HistoryPanel({
                                                 </div>
                                             </div>
                                         )}
-                                        <div className='mt-2 flex items-center gap-1'>
+                                        <div>
                                             <Dialog
                                                 open={openPromptDialogTimestamp === itemKey}
                                                 onOpenChange={(isOpen) =>
@@ -333,7 +308,7 @@ export function HistoryPanel({
                                                 <DialogTrigger asChild>
                                                     <button
                                                         type='button'
-                                                        className='border-border bg-muted/30 text-muted-foreground hover:bg-muted/60 hover:text-foreground flex-grow cursor-pointer rounded-md border px-2 py-1.5 text-left text-[11px] leading-snug transition-colors'
+                                                        className='border-border bg-muted/30 text-muted-foreground hover:bg-muted/60 hover:text-foreground block w-full cursor-pointer rounded-md border px-2 py-1.5 text-left text-[11px] leading-snug transition-colors'
                                                         onClick={() => setOpenPromptDialogTimestamp(itemKey)}
                                                         title={item.prompt || 'No prompt'}>
                                                         <span className='line-clamp-2'>
@@ -390,6 +365,32 @@ export function HistoryPanel({
                                                     </DialogFooter>
                                                 </DialogContent>
                                             </Dialog>
+                                        </div>
+                                        <div className='flex items-center gap-1'>
+                                            <p
+                                                className='min-w-0 flex-1 truncate text-[11px]'
+                                                title={`${new Date(item.timestamp).toLocaleString()} · took ${formatDuration(item.durationMs)}`}>
+                                                {formatShortDate(item.timestamp)} · {formatDuration(item.durationMs)}
+                                            </p>
+                                            {!isVideo && firstMedia && onSendToEdit && (
+                                                <Tooltip>
+                                                    <TooltipTrigger asChild>
+                                                        <Button
+                                                            type='button'
+                                                            variant='outline'
+                                                            size='icon'
+                                                            onClick={() => {
+                                                                onSelectImage(item, { skipModeChange: true });
+                                                                onSendToEdit(firstMedia.filename);
+                                                            }}
+                                                            aria-label='Use as reference'
+                                                            className='border-border bg-background text-muted-foreground hover:bg-muted/60 hover:text-foreground h-7 w-7 shrink-0'>
+                                                            <ImagePlus size={14} />
+                                                        </Button>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent side='top'>Use as reference</TooltipContent>
+                                                </Tooltip>
+                                            )}
                                             <Tooltip>
                                                 <TooltipTrigger asChild>
                                                     <Button
@@ -399,7 +400,7 @@ export function HistoryPanel({
                                                         disabled={!hasReusablePrompt}
                                                         onClick={() => handleReuseHistoryPrompt(item)}
                                                         aria-label={reuseLabel}
-                                                        className='border-border bg-background text-muted-foreground hover:bg-muted/60 hover:text-foreground h-6 w-6 disabled:opacity-40'>
+                                                        className='border-border bg-background text-muted-foreground hover:bg-muted/60 hover:text-foreground h-7 w-7 shrink-0 disabled:opacity-40'>
                                                         <RotateCcw size={13} />
                                                     </Button>
                                                 </TooltipTrigger>
@@ -412,7 +413,7 @@ export function HistoryPanel({
                                                 }}>
                                                 <DialogTrigger asChild>
                                                     <Button
-                                                        className='bg-destructive/70 text-foreground hover:bg-destructive/70 h-6 w-6'
+                                                        className='bg-destructive/70 text-foreground hover:bg-destructive/70 h-7 w-7 shrink-0'
                                                         onClick={(e) => {
                                                             e.stopPropagation();
                                                             onDeleteItemRequest(item);

@@ -1,4 +1,10 @@
-import { downloadImage, fetchDownloadImage } from '../src/lib/image-download';
+import {
+    canShareImages,
+    downloadImage,
+    fetchDownloadImage,
+    filenameForBlob,
+    shareImage
+} from '../src/lib/image-download';
 import { afterAll, describe, expect, test } from 'bun:test';
 
 const image = new Uint8Array([137, 80, 78, 71]);
@@ -32,5 +38,36 @@ describe('image downloads', () => {
 
     test.each(['empty', 'wrong-type'])('rejects %s responses instead of saving an invalid image', async (path) => {
         await expect(downloadImage(`${server.url}${path}`, 'image.png')).rejects.toThrow('not an image');
+    });
+
+    test('names WebP downloads .webp even when the stored name says .png', () => {
+        expect(filenameForBlob(new Blob(['x'], { type: 'image/webp' }), 'a.png')).toBe('a.webp');
+        expect(filenameForBlob(new Blob(['x'], { type: 'image/png' }), 'a.png')).toBe('a.png');
+    });
+
+    test('shares the fetched image as a file when the browser supports it', async () => {
+        const shared: File[] = [];
+        const nav = {
+            canShare: () => true,
+            share: async (data: { files: File[] }) => {
+                shared.push(...data.files);
+            }
+        };
+        expect(canShareImages(nav)).toBe(true);
+        expect(await shareImage(`${server.url}ok`, 'image.png', nav)).toBe(true);
+        expect(shared.map((file) => [file.name, file.type, file.size])).toEqual([['image.png', 'image/png', 4]]);
+    });
+
+    test('treats a dismissed share sheet as not shared, and reports unsupported browsers', async () => {
+        const dismissed = {
+            canShare: () => true,
+            share: async () => {
+                throw new DOMException('cancelled', 'AbortError');
+            }
+        };
+        expect(await shareImage(`${server.url}ok`, 'image.png', dismissed)).toBe(false);
+        expect(canShareImages({})).toBe(false);
+        expect(canShareImages({ canShare: () => false, share: async () => {} })).toBe(false);
+        await expect(shareImage(`${server.url}ok`, 'image.png', {})).rejects.toThrow('not supported');
     });
 });
