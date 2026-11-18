@@ -19,14 +19,53 @@ export async function fetchDownloadImage(url: string): Promise<Blob> {
     return blob;
 }
 
+// Recompressed history images keep their old .png names but are served as WebP.
+export function filenameForBlob(blob: Blob, filename: string): string {
+    return blob.type === 'image/webp' ? filename.replace(/\.png$/i, '.webp') : filename;
+}
+
+type ShareNavigator = {
+    canShare?: (data: { files: File[] }) => boolean;
+    share?: (data: { files: File[] }) => Promise<void>;
+};
+
+// True when this browser can hand image files to the system share sheet (mostly phones).
+export function canShareImages(nav: ShareNavigator | undefined = globalThis.navigator): boolean {
+    if (!nav || typeof nav.share !== 'function' || typeof nav.canShare !== 'function') return false;
+    try {
+        return nav.canShare({ files: [new File([new Uint8Array(1)], 'image.webp', { type: 'image/webp' })] });
+    } catch {
+        return false;
+    }
+}
+
+// Opens the system share sheet with the image. Resolves false if the user dismissed it.
+export async function shareImage(
+    url: string,
+    filename: string,
+    nav: ShareNavigator = globalThis.navigator
+): Promise<boolean> {
+    const blob = await fetchDownloadImage(url);
+    const file = new File([blob], filenameForBlob(blob, filename), { type: blob.type });
+    if (typeof nav.share !== 'function' || !nav.canShare?.({ files: [file] })) {
+        throw new Error('Sharing is not supported in this browser. Use Download instead.');
+    }
+    try {
+        await nav.share({ files: [file] });
+        return true;
+    } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') return false;
+        throw new Error('Sharing failed. Use Download instead.', { cause: error });
+    }
+}
+
 export async function downloadImage(url: string, filename: string): Promise<void> {
     const blob = await fetchDownloadImage(url);
     const blobUrl = URL.createObjectURL(blob);
     const link = document.createElement('a');
     try {
         link.href = blobUrl;
-        // Recompressed history images keep their old .png names but are served as WebP.
-        link.download = blob.type === 'image/webp' ? filename.replace(/\.png$/i, '.webp') : filename;
+        link.download = filenameForBlob(blob, filename);
         document.body.appendChild(link);
         link.click();
     } finally {
