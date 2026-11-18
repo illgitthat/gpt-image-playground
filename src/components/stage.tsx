@@ -162,12 +162,14 @@ export function Stage({
     const [busy, setBusy] = React.useState<'download' | 'share' | null>(null);
     const [actionError, setActionError] = React.useState<string | null>(null);
     const [copied, setCopied] = React.useState(false);
+    const [promptExpanded, setPromptExpanded] = React.useState(false);
     // Detected after mount so server and client markup match.
     const [shareSupported, setShareSupported] = React.useState(false);
     React.useEffect(() => setShareSupported(canShareImages()), []);
 
     const current = images?.[selectedIndex] ?? images?.[0] ?? null;
     React.useEffect(() => setActionError(null), [current?.filename]);
+    React.useEffect(() => setPromptExpanded(false), [prompt]);
 
     const lightboxMedia: LightboxMedia[] = React.useMemo(
         () => (images ?? []).map((image) => ({ url: image.path, filename: image.filename, alt: prompt })),
@@ -282,9 +284,23 @@ export function Stage({
 
             <div className='flex w-full max-w-[640px] flex-col items-center gap-2 sm:flex-row sm:gap-3'>
                 {prompt && (
-                    <p className='text-muted-foreground line-clamp-2 px-2 text-center text-sm leading-relaxed sm:line-clamp-1 sm:flex-1 sm:px-1 sm:text-left'>
-                        {prompt}
-                    </p>
+                    <button
+                        type='button'
+                        onClick={() => setPromptExpanded((expanded) => !expanded)}
+                        aria-expanded={promptExpanded}
+                        title={promptExpanded ? 'Show less' : 'Show the whole prompt'}
+                        className='focus-visible:ring-ring min-w-0 rounded-lg px-2 text-center focus-visible:ring-2 focus-visible:outline-none sm:flex-1 sm:px-1 sm:text-left'>
+                        <span className='text-muted-foreground block text-[11px] font-medium tracking-wide uppercase'>
+                            Prompt
+                        </span>
+                        <span
+                            className={cn(
+                                'text-foreground block text-[15px] leading-snug font-medium',
+                                !promptExpanded && 'line-clamp-3 sm:line-clamp-2'
+                            )}>
+                            {prompt}
+                        </span>
+                    </button>
                 )}
                 <div className='flex shrink-0 flex-wrap items-center justify-center gap-0.5'>
                     {!isEditing && (

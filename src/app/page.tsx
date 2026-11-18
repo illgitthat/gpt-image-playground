@@ -1569,7 +1569,7 @@ export default function HomePage() {
             </div>
 
             <footer className='text-muted-foreground/70 mt-10 w-full max-w-6xl text-center text-xs'>
-                Made with MAI Image 2.7. Prompts and images are saved on this server.
+                Made with MAI Image 2.7
             </footer>
         </main>
     );
