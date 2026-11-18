@@ -480,6 +480,16 @@ type MaiImageResponse = {
     error?: { message?: string };
 };
 
+// The MAI edits API accepts only JPEG and PNG, and our own saved images are WebP.
+async function toMaiReference(file: File): Promise<File> {
+    if (file.type === 'image/jpeg' || file.type === 'image/png') return file;
+    const png = await sharp(Buffer.from(await file.arrayBuffer()))
+        .png()
+        .toBuffer();
+    const name = `${(file.name || 'reference').replace(/\.[^.]+$/, '')}.png`;
+    return new File([new Uint8Array(png)], name, { type: 'image/png' });
+}
+
 async function generateMaiImage({
     index,
     model,
@@ -506,7 +516,9 @@ async function generateMaiImage({
         form.set('width', String(width));
         form.set('height', String(height));
         // The MAI edits API reads every form field whose name starts with "image".
-        for (const reference of references) form.append('image', reference, reference.name || 'reference.png');
+        for (const reference of await Promise.all(references.map(toMaiReference))) {
+            form.append('image', reference, reference.name || 'reference.png');
+        }
         body = form;
         url = `${maiImageEndpoint}/images/edits`;
     } else {

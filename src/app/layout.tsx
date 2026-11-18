@@ -1,7 +1,7 @@
 import './globals.css';
 import { ThemeProvider } from '@/components/theme-provider';
 import type { Metadata } from 'next';
-import { Geist, JetBrains_Mono, Instrument_Serif } from 'next/font/google';
+import { Geist, JetBrains_Mono } from 'next/font/google';
 
 const geistSans = Geist({
     variable: '--font-geist-sans',
@@ -11,13 +11,6 @@ const geistSans = Geist({
 const jetbrainsMono = JetBrains_Mono({
     variable: '--font-geist-mono',
     subsets: ['latin']
-});
-
-const instrumentSerif = Instrument_Serif({
-    variable: '--font-instrument-serif',
-    subsets: ['latin'],
-    weight: '400',
-    style: ['normal', 'italic']
 });
 
 export const metadata: Metadata = {
@@ -36,7 +29,7 @@ export default function RootLayout({
     return (
         <html lang='en' suppressHydrationWarning>
             <body
-                className={`${geistSans.variable} ${jetbrainsMono.variable} ${instrumentSerif.variable} antialiased`}>
+                className={`${geistSans.variable} ${jetbrainsMono.variable} antialiased`}>
                 <div className='pointer-events-none fixed inset-0 z-[-1] bg-grain opacity-[0.04] mix-blend-overlay' />
                 <div className='pointer-events-none fixed inset-0 z-[-2] bg-radial-vignette' />
                 <ThemeProvider attribute='class' defaultTheme='dark' enableSystem={false} disableTransitionOnChange>
