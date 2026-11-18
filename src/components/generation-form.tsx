@@ -92,8 +92,8 @@ const PROMPT_IDEAS: { label: string; prompt: string }[] = [
     }
 ];
 
-// A full-width, tappable segment backed by a (visually hidden) radio for keyboard and screen readers.
-const SegmentedOption = ({
+// One segment of a compact toggle, backed by a (visually hidden) radio for keyboard and screen readers.
+const Segment = ({
     value,
     id,
     label,
@@ -102,16 +102,18 @@ const SegmentedOption = ({
     value: string;
     id: string;
     label: string;
-    Icon: React.ElementType;
+    Icon?: React.ElementType;
 }) => (
     <Label
         htmlFor={id}
-        className='border-border bg-background text-foreground/80 hover:bg-muted/40 has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-primary/10 has-[[data-state=checked]]:text-foreground has-[:focus-visible]:ring-ring flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-md border px-3 text-sm font-normal transition-colors has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-50 has-[:focus-visible]:ring-2'>
+        className='text-muted-foreground hover:text-foreground has-[[data-state=checked]]:bg-primary has-[[data-state=checked]]:text-primary-foreground has-[:focus-visible]:ring-ring flex h-9 min-w-12 cursor-pointer items-center justify-center gap-1.5 rounded-[5px] px-3 text-sm font-medium tabular-nums transition-colors has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-50 has-[:focus-visible]:ring-2'>
         <RadioGroupItem value={value} id={id} className='sr-only' />
-        <Icon className='text-muted-foreground h-4 w-4 shrink-0' aria-hidden='true' />
+        {Icon && <Icon className='h-4 w-4 shrink-0' aria-hidden='true' />}
         <span>{label}</span>
     </Label>
 );
+
+const SEGMENT_GROUP_CLASS = 'border-border bg-muted/30 flex gap-0.5 rounded-md border p-0.5';
 
 export function GenerationForm({
     onSubmit,
@@ -560,40 +562,29 @@ export function GenerationForm({
                             value={String(n[0])}
                             onValueChange={(value) => setN([Number(value)])}
                             disabled={isLoading}
-                            className='border-border bg-muted/30 flex gap-0.5 rounded-md border p-0.5'>
+                            className={SEGMENT_GROUP_CLASS}>
                             {Array.from({ length: MAX_IMAGES }, (_, index) => index + 1).map((count) => (
-                                <Label
+                                <Segment
                                     key={count}
-                                    htmlFor={`count-${count}`}
-                                    className='text-muted-foreground hover:text-foreground has-[[data-state=checked]]:bg-primary has-[[data-state=checked]]:text-primary-foreground has-[:focus-visible]:ring-ring flex h-9 min-w-12 cursor-pointer items-center justify-center rounded-[5px] px-3 text-sm font-medium tabular-nums transition-colors has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-50 has-[:focus-visible]:ring-2'>
-                                    <RadioGroupItem value={String(count)} id={`count-${count}`} className='sr-only' />
-                                    {count}
-                                </Label>
+                                    id={`count-${count}`}
+                                    value={String(count)}
+                                    label={String(count)}
+                                />
                             ))}
                         </RadioGroup>
                     </div>
 
-                    <div className='space-y-2'>
-                        <Label className='text-foreground block'>Size</Label>
+                    <div className='flex items-center justify-between gap-3'>
+                        <Label className='text-foreground'>Size</Label>
                         <RadioGroup
                             aria-label='Image size'
                             value={size === 'auto' ? '1024x1024' : size}
                             onValueChange={(value) => setSize(value as GenerationFormData['size'])}
                             disabled={isLoading}
-                            className='grid grid-cols-3 gap-2'>
-                            <SegmentedOption value='1024x1024' id='size-square' label='Square' Icon={Square} />
-                            <SegmentedOption
-                                value='1536x1024'
-                                id='size-landscape'
-                                label='Wide'
-                                Icon={RectangleHorizontal}
-                            />
-                            <SegmentedOption
-                                value='1024x1536'
-                                id='size-portrait'
-                                label='Tall'
-                                Icon={RectangleVertical}
-                            />
+                            className={SEGMENT_GROUP_CLASS}>
+                            <Segment value='1024x1024' id='size-square' label='Square' Icon={Square} />
+                            <Segment value='1536x1024' id='size-landscape' label='Wide' Icon={RectangleHorizontal} />
+                            <Segment value='1024x1536' id='size-portrait' label='Tall' Icon={RectangleVertical} />
                         </RadioGroup>
                     </div>
                 </CardContent>
