@@ -2,6 +2,7 @@ import { parseByteRange } from '../src/lib/byte-range';
 import {
     aspectRatioForSize,
     assetUrl,
+    chooseVideoSeconds,
     downloadVideo,
     estimateVideoCost,
     isVideoJobId,
@@ -9,6 +10,7 @@ import {
     VideoApiError,
     videoConfig,
     videoErrorMessage,
+    videoSecondsOptions,
     videoStatus,
     type VideoConfig
 } from '../src/lib/video';
@@ -68,9 +70,19 @@ describe('video config', () => {
         });
     });
 
+    test('offers 5 and 10 seconds and falls back to the default for anything else', () => {
+        expect(videoSecondsOptions(config)).toEqual([5, 10]);
+        expect(videoSecondsOptions({ ...config, seconds: 8 })).toEqual([5, 8, 10]);
+        expect(chooseVideoSeconds(config, '10')).toBe(10);
+        expect(chooseVideoSeconds(config, '15')).toBe(5);
+        expect(chooseVideoSeconds(config, null)).toBe(5);
+        expect(chooseVideoSeconds(config, 'abc')).toBe(5);
+    });
+
     test('estimates cost from length and resolution', () => {
         expect(estimateVideoCost(5, '768P')).toBe(0.23);
         expect(estimateVideoCost(5, '480P')).toBe(0.14);
+        expect(estimateVideoCost(10, '768P')).toBe(0.43);
     });
 });
 
@@ -117,7 +129,7 @@ describe('video helpers', () => {
 describe('video API calls', () => {
     test('text-to-video sends the shape; image-to-video sends the image and lets it set the shape', async () => {
         const calls = mockFetch([Response.json({ request_id: JOB }), Response.json({ request_id: JOB })]);
-        expect(await submitVideo(config, { prompt: 'a cat', aspectRatio: '9:16' })).toBe(JOB);
+        expect(await submitVideo(config, { prompt: 'a cat', aspectRatio: '9:16', seconds: 5 })).toBe(JOB);
         expect(calls[0].url).toBe(`${ENDPOINT}/text-to-video`);
         expect(calls[0].headers['api-key']).toBe('key');
         expect(calls[0].body).toEqual({
@@ -129,15 +141,20 @@ describe('video API calls', () => {
             aspect_ratio: '9:16'
         });
 
-        await submitVideo(config, { prompt: 'zoom', imageDataUri: 'data:image/jpeg;base64,AAAA', aspectRatio: '1:1' });
+        await submitVideo(config, {
+            prompt: 'zoom',
+            imageDataUri: 'data:image/jpeg;base64,AAAA',
+            aspectRatio: '1:1',
+            seconds: 10
+        });
         expect(calls[1].url).toBe(`${ENDPOINT}/image-to-video`);
-        expect(calls[1].body).toMatchObject({ image_url: 'data:image/jpeg;base64,AAAA' });
+        expect(calls[1].body).toMatchObject({ image_url: 'data:image/jpeg;base64,AAAA', duration: 10 });
         expect(calls[1].body).not.toHaveProperty('aspect_ratio');
     });
 
     test('a rejected request surfaces the service message and status', async () => {
         mockFetch([Response.json({ detail: 'Too many requests' }, { status: 429 })]);
-        const error = await submitVideo(config, { prompt: 'a cat' }).catch((caught) => caught);
+        const error = await submitVideo(config, { prompt: 'a cat', seconds: 5 }).catch((caught) => caught);
         expect(error).toBeInstanceOf(VideoApiError);
         expect(error.status).toBe(429);
         expect(error.message).toBe('Too many requests');
@@ -212,7 +229,14 @@ describe('remembering a video in progress', () => {
             }
         } as Storage;
     }
-    const job = { jobId: JOB, prompt: 'a cat', startedAt: 1_000_000, aspect: '1 / 1', baseUrl: '/api/image/a.webp' };
+    const job = {
+        jobId: JOB,
+        prompt: 'a cat',
+        startedAt: 1_000_000,
+        aspect: '1 / 1',
+        seconds: 10,
+        baseUrl: '/api/image/a.webp'
+    };
 
     test('a saved job comes back after a reload and is forgotten once cleared', () => {
         const storage = memoryStorage();

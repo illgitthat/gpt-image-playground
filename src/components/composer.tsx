@@ -69,8 +69,10 @@ type ComposerProps = {
     outputMode: OutputMode;
     // Absent when video is not available; the Image/Video switch is then hidden.
     setOutputMode?: (mode: OutputMode) => void;
-    // Length of the clips the server makes.
+    // Length of the next clip, and the lengths on offer.
     videoSeconds: number;
+    videoSecondsOptions: number[];
+    setVideoSeconds: (seconds: number) => void;
     // The image on the stage that the next prompt will change, if any.
     editTargetUrl: string | null;
     onStopEditing: () => void;
@@ -145,6 +147,8 @@ export function Composer({
     outputMode,
     setOutputMode,
     videoSeconds,
+    videoSecondsOptions,
+    setVideoSeconds,
     editTargetUrl,
     onStopEditing,
     onEnhance,
@@ -170,12 +174,18 @@ export function Composer({
     const canSend = !busy && (prompt.trim().length > 0 || (isVideo && hasStartImage));
 
     // Grow with the text, up to about eight lines.
-    React.useLayoutEffect(() => {
+    const fitTextarea = React.useCallback(() => {
         const el = textareaRef.current;
         if (!el) return;
         el.style.height = 'auto';
         el.style.height = `${Math.min(el.scrollHeight, 220)}px`;
-    }, [prompt]);
+    }, []);
+    React.useLayoutEffect(fitTextarea, [prompt, fitTextarea]);
+    // Lines rewrap when the window changes width (or a phone rotates).
+    React.useEffect(() => {
+        window.addEventListener('resize', fitTextarea);
+        return () => window.removeEventListener('resize', fitTextarea);
+    }, [fitTextarea]);
 
     const addFiles = React.useCallback(
         (files: File[]) => {
@@ -415,11 +425,23 @@ export function Composer({
                 )}
 
                 {isVideo ? (
-                    <span
-                        className='text-muted-foreground shrink-0 px-2 text-sm tabular-nums'
-                        title={`Videos are ${videoSeconds} seconds long, with sound`}>
-                        {videoSeconds}s<span className='hidden sm:inline'> clip</span>
-                    </span>
+                    <ToolButton
+                        label={
+                            videoSecondsOptions.length > 1
+                                ? `${videoSeconds}-second clip. Tap to change the length`
+                                : `Videos are ${videoSeconds} seconds long`
+                        }
+                        onClick={() => {
+                            const next = videoSecondsOptions.indexOf(videoSeconds) + 1;
+                            setVideoSeconds(videoSecondsOptions[next % videoSecondsOptions.length] ?? videoSeconds);
+                        }}
+                        disabled={isLoading || videoSecondsOptions.length < 2}
+                        className={cn(
+                            'tabular-nums disabled:opacity-100',
+                            videoSeconds !== videoSecondsOptions[0] && 'bg-muted text-foreground'
+                        )}>
+                        <span className='font-medium'>{videoSeconds}s</span>
+                    </ToolButton>
                 ) : (
                     <ToolButton
                         label={count === 1 ? 'Make 2 at once' : 'Make 1 at a time'}
@@ -437,14 +459,23 @@ export function Composer({
                         <Undo2 className='h-4 w-4' />
                     </ToolButton>
                 )}
-                <ToolButton label='Surprise me with an idea' onClick={onSurprise} disabled={busy}>
+                {/* On very narrow phones only one helper fits: ideas for an empty prompt, improvement for a written one. */}
+                <ToolButton
+                    label='Surprise me with an idea'
+                    onClick={onSurprise}
+                    disabled={busy}
+                    className={cn(prompt.trim() && 'max-[400px]:hidden')}>
                     {isSurprising ? (
                         <Loader2 className='h-4 w-4 animate-spin' />
                     ) : (
                         <Dices className='h-[18px] w-[18px]' />
                     )}
                 </ToolButton>
-                <ToolButton label='Improve my prompt' onClick={onEnhance} disabled={busy || !prompt.trim()}>
+                <ToolButton
+                    label='Improve my prompt'
+                    onClick={onEnhance}
+                    disabled={busy || !prompt.trim()}
+                    className={cn(!prompt.trim() && 'max-[400px]:hidden')}>
                     {isEnhancing ? (
                         <Loader2 className='h-4 w-4 animate-spin' />
                     ) : (

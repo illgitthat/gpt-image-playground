@@ -1,6 +1,7 @@
 import {
     canShareImages,
     downloadImage,
+    downloadName,
     fetchDownloadImage,
     filenameForBlob,
     shareImage
@@ -69,5 +70,21 @@ describe('image downloads', () => {
         expect(canShareImages({})).toBe(false);
         expect(canShareImages({ canShare: () => false, share: async () => {} })).toBe(false);
         await expect(shareImage(`${server.url}ok`, 'image.png', {})).rejects.toThrow('not supported');
+    });
+});
+
+describe('download names', () => {
+    test('builds a short readable name from the prompt and keeps the extension', () => {
+        expect(downloadName('A cozy log cabin in a snowy pine forest at dusk', '1794-abc-0.webp')).toBe(
+            'a-cozy-log-cabin-in-a.webp'
+        );
+        expect(downloadName('Café “déjà vu”!!', 'x.png')).toBe('cafe-deja-vu.png');
+        expect(downloadName('Corgi sticker', 'job-video.mp4')).toBe('corgi-sticker.mp4');
+    });
+
+    test('numbers later images in a batch and falls back when the prompt has no usable words', () => {
+        expect(downloadName('Corgi sticker', 'x.webp', 1)).toBe('corgi-sticker-2.webp');
+        expect(downloadName('', 'job-video.mp4')).toBe('job-video.mp4');
+        expect(downloadName('日本語のプロンプト', 'x.webp')).toBe('x.webp');
     });
 });

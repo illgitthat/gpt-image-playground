@@ -1,10 +1,11 @@
 // Browser side of video generation: start a job, then poll until the server has saved the file.
 
-export type VideoResult = { filename: string; poster: string | null; model: string; seconds: number };
+export type VideoResult = { filename: string; poster: string | null; model: string };
 
 type StartOptions = {
     prompt: string;
     size: string;
+    seconds: number;
     image: File | null;
     passwordHash: string | null;
 };
@@ -35,6 +36,7 @@ export async function startVideo(options: StartOptions, signal: AbortSignal): Pr
     const form = new FormData();
     form.append('prompt', options.prompt);
     form.append('size', options.size);
+    form.append('seconds', String(options.seconds));
     if (options.image) form.append('image', options.image, options.image.name);
     if (options.passwordHash) form.append('passwordHash', options.passwordHash);
     const response = await fetch('/api/video', { method: 'POST', body: form, signal });
@@ -90,8 +92,7 @@ export async function waitForVideo(
             return {
                 filename: body.filename,
                 poster: typeof body.poster === 'string' ? body.poster : null,
-                model: typeof body.model === 'string' ? body.model : 'video',
-                seconds: typeof body.seconds === 'number' ? body.seconds : 0
+                model: typeof body.model === 'string' ? body.model : 'video'
             };
         }
         if (Date.now() - startedAt > GIVE_UP_AFTER_MS) {
@@ -114,6 +115,8 @@ export type PendingVideoJob = {
     prompt: string;
     startedAt: number;
     aspect: string;
+    // Length of the clip being made.
+    seconds: number;
     // The image being animated, when it is one the server can still serve.
     baseUrl: string | null;
 };
@@ -153,6 +156,7 @@ export function loadPendingVideoJob(storage: Storage = localStorage, now = Date.
                 prompt: job.prompt,
                 startedAt: job.startedAt,
                 aspect: job.aspect,
+                seconds: typeof job.seconds === 'number' ? job.seconds : 5,
                 baseUrl: typeof job.baseUrl === 'string' ? job.baseUrl : null
             };
         }
@@ -167,4 +171,10 @@ export function loadPendingVideoJob(storage: Storage = localStorage, now = Date.
 // server could answer byte-range requests would otherwise stay unplayable in Safari.
 export function videoUrl(filename: string): string {
     return `/api/image/${filename}?v=2`;
+}
+
+// Roughly how long a clip of this length takes to make, for the progress bar.
+export function typicalVideoSeconds(clipSeconds: number): number {
+    // Measured: about 17 s for a 5-second clip and 19 s for a 10-second one.
+    return Math.round(15 + clipSeconds * 0.5);
 }

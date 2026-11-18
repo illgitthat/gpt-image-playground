@@ -11,6 +11,8 @@ const EXTRA_SECONDS = 0.7;
 
 const DEFAULT_MODEL = 'Fal-MiniMax-H3-Max-Turbo';
 const DEFAULT_SECONDS = 5;
+// Clip lengths people can pick. The configured default is always offered too.
+const SECONDS_CHOICES = [5, 10];
 const DEFAULT_RESOLUTION: VideoResolution = '768P';
 // Used when someone animates an image without saying how.
 export const DEFAULT_MOTION_PROMPT = 'Bring this image to life with natural, gentle motion and a slow camera move.';
@@ -39,6 +41,17 @@ export function videoConfig(env: NodeJS.ProcessEnv = process.env): VideoConfig |
         seconds: Number.isFinite(seconds) && seconds >= 1 && seconds <= 15 ? seconds : DEFAULT_SECONDS,
         resolution: resolution && VIDEO_RESOLUTIONS.includes(resolution) ? resolution : DEFAULT_RESOLUTION
     };
+}
+
+// The lengths on offer, shortest first.
+export function videoSecondsOptions(config: VideoConfig): number[] {
+    return [...new Set([config.seconds, ...SECONDS_CHOICES])].sort((a, b) => a - b);
+}
+
+// The requested length if it is one we offer; otherwise the default.
+export function chooseVideoSeconds(config: VideoConfig, requested: unknown): number {
+    const seconds = Number(requested);
+    return videoSecondsOptions(config).includes(seconds) ? seconds : config.seconds;
 }
 
 export function estimateVideoCost(seconds: number, resolution: VideoResolution): number {
@@ -113,6 +126,7 @@ export type VideoRequest = {
     imageDataUri?: string;
     // Only used without an image.
     aspectRatio?: string;
+    seconds: number;
 };
 
 export type VideoStatus = 'queued' | 'running' | 'completed';
@@ -143,7 +157,7 @@ export async function submitVideo(config: VideoConfig, request: VideoRequest): P
     const body: Record<string, unknown> = {
         model: config.model,
         prompt: request.prompt,
-        duration: config.seconds,
+        duration: request.seconds,
         resolution: config.resolution,
         // "balanced" lets the model flesh out short prompts; it adds about a second.
         prompt_expansion_mode: 'balanced'

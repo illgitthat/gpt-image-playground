@@ -51,9 +51,10 @@ The gateway must support the `x-ms-oai-image-generation-deployment` header and h
 | `TEXT_LIMIT_PER_IP_HOUR` | Prompt enhance + surprise-me calls per IP per hour (default 120). |
 | `VIDEO_ENDPOINT` | Base URL of one fal video model on Microsoft Foundry, e.g. `https://<gateway>/<resource>/providers/falai/v1/minimax/h3-max-turbo`. Video is hidden until this is set. Uses `AZURE_OPENAI_API_KEY` unless `VIDEO_API_KEY` is set. |
 | `VIDEO_MODEL` | Foundry deployment name for the video model (default `Fal-MiniMax-H3-Max-Turbo`). |
-| `VIDEO_SECONDS` / `VIDEO_RESOLUTION` | Clip length (default 5) and `480P`, `768P` or `1080P` (default `768P`). |
+| `VIDEO_SECONDS` / `VIDEO_RESOLUTION` | Default clip length (default 5; people can also pick 5 or 10) and `480P`, `768P` or `1080P` (default `768P`). |
 | `VIDEO_LIMIT_PER_IP_DAY` | Video generations per IP per day (default 10). |
 | `IMAGE_LOG_FILE` | JSONL log of image requests (time, status, model, prompt, settings, client IP, files). Defaults to `logs/image-generations.jsonl`; set to `off` to disable. |
+| `SITE_URL` | Public address of the site, e.g. `https://images.example.com`. Lets link previews show the preview image. |
 | `NEXT_PUBLIC_IMAGE_STORAGE_MODE` | `fs` saves images in `generated-images/`; `indexeddb` saves them in the browser. Defaults to `fs` locally and `indexeddb` on Vercel. |
 
 Behind a reverse proxy, serve finished videos (`/api/image/<id>-video.mp4`) straight from `generated-images/`. The app sends files without a `Content-Length`, and Safari will not play a video it cannot fetch in byte ranges.
