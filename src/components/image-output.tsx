@@ -399,7 +399,8 @@ export function ImageOutput({
                     </div>
                 )}
 
-                <div className='flex items-center gap-2'>
+                {/* Nothing to act on until an image exists. */}
+                <div className={cn('flex items-center gap-2', !imageBatch?.length && 'hidden')}>
                     <Button
                         variant='outline'
                         size='sm'
