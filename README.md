@@ -53,10 +53,10 @@ The gateway must support the `x-ms-oai-image-generation-deployment` header and h
 | `VIDEO_MODEL` | Foundry deployment name for the video model (default `Fal-MiniMax-H3-Max-Turbo`). |
 | `VIDEO_SECONDS` / `VIDEO_RESOLUTION` | Clip length (default 5) and `480P`, `768P` or `1080P` (default `768P`). |
 | `VIDEO_LIMIT_PER_IP_DAY` | Video generations per IP per day (default 10). |
-
-Behind a reverse proxy, serve finished videos (`/api/image/<id>-video.mp4`) straight from `generated-images/`. The app sends files without a `Content-Length`, and Safari will not play a video it cannot fetch in byte ranges.
 | `IMAGE_LOG_FILE` | JSONL log of image requests (time, status, model, prompt, settings, client IP, files). Defaults to `logs/image-generations.jsonl`; set to `off` to disable. |
 | `NEXT_PUBLIC_IMAGE_STORAGE_MODE` | `fs` saves images in `generated-images/`; `indexeddb` saves them in the browser. Defaults to `fs` locally and `indexeddb` on Vercel. |
+
+Behind a reverse proxy, serve finished videos (`/api/image/<id>-video.mp4`) straight from `generated-images/`. The app sends files without a `Content-Length`, and Safari will not play a video it cannot fetch in byte ranges.
 
 Reference images and history are stored in the browser. Use `indexeddb` on hosts without persistent writable storage.
 
