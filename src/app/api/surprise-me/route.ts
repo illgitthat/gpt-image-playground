@@ -25,11 +25,11 @@ export async function POST(request: NextRequest) {
 
     try {
         const body = await request.json();
-        const mode = body?.mode as 'generate' | undefined;
+        const mode = body?.mode as 'generate' | 'video' | undefined;
         const clientPasswordHash = body?.passwordHash as string | undefined;
 
-        if (!mode || mode !== 'generate') {
-            return NextResponse.json({ error: 'Missing or invalid parameter: mode must be "generate".' }, { status: 400 });
+        if (mode !== 'generate' && mode !== 'video') {
+            return NextResponse.json({ error: 'Missing or invalid parameter: mode must be "generate" or "video".' }, { status: 400 });
         }
 
         if (process.env.APP_PASSWORD) {

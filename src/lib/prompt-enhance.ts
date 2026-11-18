@@ -59,9 +59,30 @@ Rules:
 
 const surprisePromptRules = `Create one original image idea and return only its ready-to-use prompt. Build around a coherent visual idea, not a pile of unrelated surprises. Specify the subject, composition, medium, and a few useful details of light, color, or materials. Use enough detail to make it drawable without padding.
 - Match the requested visual format: practical layout and readable controls for an interface, clear visual relationships for a diagram, a strong simple silhouette for a logo. Do not fabricate factual claims, statistics, or citations.
-- Include text only if it serves the concept. Quote the exact wording and specify its placement and legibility; exclude other text without removing required reference labels.
+- Text is welcome where the idea calls for it: signs, labels, titles, packaging, a made-up brand or logo. Quote the exact wording and say where it sits.
+- Write plain text without Markdown: no asterisks, headings or bullet lists.
+- Say what is in the picture, not what is missing. Never add exclusions such as "no text", "no logos", "no watermark" or "no people".
 - Keep API settings and model advice out of the prompt. For a transparent asset, describe clean alpha edges without a solid backdrop, painted checkerboard, or unnecessary shadow.
-- Keep content family-friendly and avoid real public figures, brands, and political/geopolitical references.`;
+- Keep content family-friendly and avoid real public figures, real brands, and political/geopolitical references.`;
+
+const surpriseVideoRules = `Return only the ready-to-use prompt, as plain prose with no headings or lists.
+- This is a single continuous shot lasting 5 to 10 seconds. Give it one clear action and one camera move; no cuts, no montage.
+- Describe motion concretely: what moves, in which direction, how fast, and what the camera does (slow push-in, orbit, tracking shot, static tripod).
+- The clip has sound. Mention one or two fitting sounds when they add something.
+- Say what happens, not what is missing. Never add exclusions such as "no text" or "no logos".
+- Keep content family-friendly and avoid real public figures, real brands, and political/geopolitical references.`;
+
+const surpriseVideoSystemPrompt = `Create one original idea for a short video clip.
+${surpriseVideoRules}
+- Set the scene first: subject, place, light and visual style, in enough detail to picture it. Then the action and the camera.
+- Pick something that is satisfying to watch move, not a still picture with a camera drifting over it.
+- Length target: 40 to 70 words.`;
+
+const surpriseAnimateSystemPrompt = `The supplied image is the first frame of a short video clip. Suggest one surprising but fitting way to bring it to life.
+${surpriseVideoRules}
+- Start from what is actually visible. Refer to things by what they are ("the dog", "the lanterns"), and do not re-describe the whole picture.
+- Keep the subject, setting and style of the image; add movement, not new scenery.
+- Length target: 20 to 40 words.`;
 
 const surpriseGenerateSystemPrompt = `${surprisePromptRules}
 Invent a fresh scene with an imaginative but coherent combination of subjects or materials rather than a familiar stock-image concept.`;
@@ -170,7 +191,7 @@ export function buildPromptEnhanceInput(
     return { instructions, input: buildReferenceInput(prompt, referenceImages, mode === 'video' ? 'low' : 'auto') };
 }
 
-export type SurpriseMeMode = 'generate';
+export type SurpriseMeMode = 'generate' | 'video';
 
 export type BuildSurpriseMeOptions = {
     referenceImages?: PromptEnhanceImagePayload[];
@@ -182,6 +203,37 @@ export function buildSurpriseMeInput(
 ): PromptEnhanceParams {
     const referenceImages = options?.referenceImages ?? [];
     const hasReferenceImages = referenceImages.length > 0;
+    if (mode === 'video') {
+        if (hasReferenceImages) {
+            // A video starts from one image; only the first is the frame being animated.
+            return {
+                instructions: surpriseAnimateSystemPrompt,
+                input: buildReferenceInput(
+                    'Suggest how this image should move as a short video clip.',
+                    referenceImages.slice(0, 1),
+                    'low'
+                )
+            };
+        }
+        const videoThemes = [
+            'nature close-up',
+            'cozy everyday moment',
+            'miniature world',
+            'stop-motion craft animation',
+            'sweeping landscape',
+            'playful animal',
+            'retro science fiction',
+            'food being prepared',
+            'city street at night',
+            'hand-drawn animation'
+        ];
+        const pickedVideoTheme = videoThemes[Math.floor(Math.random() * videoThemes.length)];
+        return {
+            instructions: surpriseVideoSystemPrompt,
+            input: `Surprise me with a fresh video prompt. Try the mode: ${pickedVideoTheme}. Pick a subject I would not expect.`
+        };
+    }
+
     const instructions =
         hasReferenceImages ? surpriseEditSystemPrompt : surpriseGenerateSystemPrompt;
 
