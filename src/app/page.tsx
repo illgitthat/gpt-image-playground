@@ -29,6 +29,7 @@ import {
     savePendingVideoJob,
     startVideo,
     VideoRequestError,
+    videoUrl,
     waitForVideo,
     type PendingVideoJob
 } from '@/lib/video-client';
@@ -763,7 +764,11 @@ export default function HomePage() {
         const fromBrowser = !isVideoEntry && (item.storageModeUsed || 'fs') === 'indexeddb';
         const validAssets = assets
             .map((asset) => {
-                const path = fromBrowser ? getImageSrc(asset.filename) : `/api/image/${asset.filename}`;
+                const path = isVideoEntry
+                    ? videoUrl(asset.filename)
+                    : fromBrowser
+                      ? getImageSrc(asset.filename)
+                      : `/api/image/${asset.filename}`;
                 return path ? { path, filename: asset.filename } : null;
             })
             .filter((asset): asset is { path: string; filename: string } => asset !== null);
@@ -1028,7 +1033,7 @@ export default function HomePage() {
                 ...(result.poster ? { poster: result.poster } : {})
             };
             clearPendingVideoJob();
-            setLatestImageBatch([{ filename: result.filename, path: `/api/image/${result.filename}` }]);
+            setLatestImageBatch([{ filename: result.filename, path: videoUrl(result.filename) }]);
             setStageEntry(entry);
             setStageIndex(0);
             setEditStage(false);

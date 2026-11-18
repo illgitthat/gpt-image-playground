@@ -2,6 +2,7 @@
 
 import type { HistoryMetadata } from '@/app/page';
 import { cn } from '@/lib/utils';
+import { videoUrl } from '@/lib/video-client';
 import { Layers, Play } from 'lucide-react';
 import Image from 'next/image';
 import * as React from 'react';
@@ -74,7 +75,7 @@ export function Gallery({ history, activeTimestamp, getImageSrc, onOpen, onClear
                                     />
                                 ) : isVideo ? (
                                     <video
-                                        src={`/api/image/${first.filename}#t=0.1`}
+                                        src={`${videoUrl(first.filename)}#t=0.1`}
                                         preload='metadata'
                                         muted
                                         playsInline

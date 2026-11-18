@@ -162,3 +162,9 @@ export function loadPendingVideoJob(storage: Storage = localStorage, now = Date.
     clearPendingVideoJob(storage);
     return null;
 }
+
+// Where a saved video is served. The version changes the cache key: copies cached before the
+// server could answer byte-range requests would otherwise stay unplayable in Safari.
+export function videoUrl(filename: string): string {
+    return `/api/image/${filename}?v=2`;
+}
