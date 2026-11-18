@@ -2,6 +2,7 @@
 
 import type { ImageSize } from '@/components/composer';
 import { ImageLightbox, type LightboxMedia } from '@/components/image-lightbox';
+import { StageVideo } from '@/components/stage-video';
 import { canShareImages, downloadImage, downloadName, shareImage } from '@/lib/image-download';
 import { cn } from '@/lib/utils';
 import {
@@ -278,20 +279,11 @@ export function Stage({
         <div key={current.filename} className='stage-in flex w-full flex-col items-center gap-3'>
             <div className='relative max-w-full'>
                 {video ? (
-                    <video
-                        key={current.filename}
+                    <StageVideo
                         src={current.path}
-                        poster={video.poster ? `/api/image/${video.poster}` : undefined}
-                        controls
-                        autoPlay
-                        loop
-                        muted
-                        playsInline
-                        preload='auto'
-                        onError={() => setPlaybackFailed(true)}
-                        onLoadedData={() => setPlaybackFailed(false)}
-                        aria-label={prompt || 'Generated video'}
-                        className='stage-image block h-auto max-h-[min(56vh,640px)] w-auto max-w-full rounded-3xl bg-black shadow-[0_30px_80px_-30px_rgb(0_0_0/0.55)]'
+                        poster={video.poster ? `/api/image/${video.poster}` : null}
+                        label={prompt || 'Generated video'}
+                        onPlaybackChange={setPlaybackFailed}
                     />
                 ) : (
                     <button

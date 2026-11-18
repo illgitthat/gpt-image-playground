@@ -4,6 +4,7 @@ import { Composer, type GenerationFormData, type OutputMode } from '@/components
 import { Gallery } from '@/components/gallery';
 import { PasswordDialog } from '@/components/password-dialog';
 import { Stage, type PendingGeneration } from '@/components/stage';
+import { unlockVideoSound } from '@/components/stage-video';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -1182,6 +1183,8 @@ export default function HomePage() {
     const handleSubmit = async () => {
         if (isLoading) return;
         if (makingVideo) {
+            // Still inside the tap, so the finished video may start with sound.
+            unlockVideoSound();
             // An image can be animated without a description; a video from nothing needs one.
             if (genPrompt.trim() || editTarget || genReferenceImages.length > 0) await handleVideoCall();
             return;
@@ -1559,6 +1562,7 @@ export default function HomePage() {
                     activeTimestamp={stageEntry?.timestamp ?? null}
                     getImageSrc={getImageSrc}
                     onOpen={(item) => {
+                        if (item.mode === 'video') unlockVideoSound();
                         if (!isLoading) handleHistorySelect(item);
                     }}
                     onClear={handleClearHistory}
