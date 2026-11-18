@@ -63,7 +63,28 @@ export function Gallery({ history, activeTimestamp, getImageSrc, onOpen, onClear
                                         ? 'ring-primary ring-offset-background ring-2 ring-offset-2'
                                         : 'hover:-translate-y-0.5 hover:shadow-lg'
                                 )}>
-                                {src ? (
+                                {isVideo ? (
+                                    // Plays silently while the pointer is over it; phones just see the still.
+                                    <video
+                                        src={`${videoUrl(first.filename)}#t=0.1`}
+                                        poster={src}
+                                        preload={src ? 'none' : 'metadata'}
+                                        muted
+                                        loop
+                                        playsInline
+                                        tabIndex={-1}
+                                        aria-hidden='true'
+                                        onPointerEnter={(event) => {
+                                            if (event.pointerType === 'mouse')
+                                                void event.currentTarget.play().catch(() => {});
+                                        }}
+                                        onPointerLeave={(event) => {
+                                            event.currentTarget.pause();
+                                            event.currentTarget.currentTime = 0.1;
+                                        }}
+                                        className='h-full w-full object-cover'
+                                    />
+                                ) : src ? (
                                     <Image
                                         src={src}
                                         alt=''
@@ -73,24 +94,15 @@ export function Gallery({ history, activeTimestamp, getImageSrc, onOpen, onClear
                                         unoptimized
                                         loading={index < 8 ? 'eager' : 'lazy'}
                                     />
-                                ) : isVideo ? (
-                                    <video
-                                        src={`${videoUrl(first.filename)}#t=0.1`}
-                                        preload='metadata'
-                                        muted
-                                        playsInline
-                                        tabIndex={-1}
-                                        aria-hidden='true'
-                                        className='pointer-events-none h-full w-full object-cover'
-                                    />
                                 ) : (
                                     <span className='text-muted-foreground flex h-full w-full items-center justify-center text-xs'>
                                         missing
                                     </span>
                                 )}
                                 {isVideo && (
-                                    <span className='bg-background/75 text-foreground absolute right-1.5 bottom-1.5 flex h-6 w-6 items-center justify-center rounded-full backdrop-blur'>
-                                        <Play className='h-3 w-3 fill-current' />
+                                    <span className='bg-background/75 text-foreground pointer-events-none absolute right-1.5 bottom-1.5 flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[11px] tabular-nums backdrop-blur'>
+                                        <Play className='h-2.5 w-2.5 fill-current' />
+                                        {item.videoSeconds ? `${item.videoSeconds}s` : 'Video'}
                                     </span>
                                 )}
                                 {!isVideo && item.images!.length > 1 && (

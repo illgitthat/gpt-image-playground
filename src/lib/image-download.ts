@@ -74,3 +74,21 @@ export async function downloadImage(url: string, filename: string): Promise<void
         setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
     }
 }
+
+// A readable download name from the prompt, e.g. "cozy-log-cabin-in-a-snowy-2.webp".
+// Falls back to the stored name when the prompt has nothing usable.
+export function downloadName(prompt: string, filename: string, index = 0): string {
+    const extension = /\.[a-z0-9]+$/i.exec(filename)?.[0] ?? '';
+    const words = prompt
+        .normalize('NFKD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, ' ')
+        .trim()
+        .split(' ')
+        .filter(Boolean)
+        .slice(0, 6);
+    const slug = words.join('-').slice(0, 48).replace(/-+$/, '');
+    if (!slug) return filename;
+    return `${slug}${index > 0 ? `-${index + 1}` : ''}${extension}`;
+}

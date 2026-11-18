@@ -28,6 +28,7 @@ import {
     loadPendingVideoJob,
     savePendingVideoJob,
     startVideo,
+    typicalVideoSeconds,
     VideoRequestError,
     videoUrl,
     waitForVideo,
@@ -106,6 +107,16 @@ const EXAMPLES: { label: string; image: string; prompt: string }[] = [
     }
 ];
 
+// One-tap ways to move an image, offered when animating with an empty prompt.
+const MOTION_IDEAS: { label: string; prompt: string }[] = [
+    { label: 'Slow zoom in', prompt: 'Slow, steady push-in toward the main subject, everything else holding still' },
+    { label: 'Orbit around', prompt: 'The camera slowly orbits around the main subject, keeping it centered' },
+    { label: 'Come alive', prompt: 'The scene comes alive with natural movement, as if the photo was a paused video' },
+    { label: 'Gentle breeze', prompt: 'A gentle breeze moves through the scene, with soft drifting light' }
+];
+
+const SITE_TITLE = 'MAI Image Playground';
+
 console.log(
     `Client Effective Storage Mode: ${effectiveStorageModeClient} (Explicit: ${explicitModeClient || 'unset'}, Vercel Env: ${vercelEnvClient || 'N/A'})`
 );
@@ -113,7 +124,8 @@ console.log(
 export default function HomePage() {
     // What the prompt bar makes next. Video is offered only when the server has it set up.
     const [outputMode, setOutputMode] = React.useState<OutputMode>('image');
-    const [videoInfo, setVideoInfo] = React.useState<{ seconds: number } | null>(null);
+    const [videoInfo, setVideoInfo] = React.useState<{ seconds: number; options: number[] } | null>(null);
+    const [videoSeconds, setVideoSeconds] = React.useState(5);
     const videoJobRef = React.useRef<string | null>(null);
     const [isPasswordRequiredByBackend, setIsPasswordRequiredByBackend] = React.useState<boolean | null>(null);
     const [clientPasswordHash, setClientPasswordHash] = React.useState<string | null>(null);
@@ -233,9 +245,18 @@ export default function HomePage() {
                 }
                 const data = await response.json();
                 setIsPasswordRequiredByBackend(data.passwordRequired);
-                setVideoInfo(
-                    data.video && typeof data.video.seconds === 'number' ? { seconds: data.video.seconds } : null
-                );
+                if (data.video && typeof data.video.seconds === 'number') {
+                    const options = Array.isArray(data.video.secondsOptions)
+                        ? data.video.secondsOptions.filter((value: unknown) => typeof value === 'number')
+                        : [];
+                    setVideoInfo({
+                        seconds: data.video.seconds,
+                        options: options.length ? options : [data.video.seconds]
+                    });
+                    setVideoSeconds(data.video.seconds);
+                } else {
+                    setVideoInfo(null);
+                }
             } catch (error) {
                 console.error('Error fetching auth status:', error);
                 setIsPasswordRequiredByBackend(false);
@@ -1013,7 +1034,8 @@ export default function HomePage() {
             count: 1,
             baseUrl: job.baseUrl,
             aspect: job.aspect,
-            startedAt: job.startedAt
+            startedAt: job.startedAt,
+            typicalSeconds: typicalVideoSeconds(job.seconds)
         });
         try {
             const result = await waitForVideo(job.jobId, clientPasswordHash, controller.signal);
@@ -1029,7 +1051,7 @@ export default function HomePage() {
                 mode: 'video',
                 costDetails: null,
                 model: result.model,
-                videoSeconds: result.seconds,
+                videoSeconds: job.seconds,
                 ...(result.poster ? { poster: result.poster } : {})
             };
             clearPendingVideoJob();
@@ -1086,15 +1108,31 @@ export default function HomePage() {
                 bitmap?.close();
             }
             const baseUrl = editTarget?.path ?? (image ? (genReferenceImagePreviewUrls[0] ?? null) : null);
-            setPending({ kind: 'video', prompt, size: 'auto', count: 1, baseUrl, aspect, startedAt });
+            setPending({
+                kind: 'video',
+                prompt,
+                size: 'auto',
+                count: 1,
+                baseUrl,
+                aspect,
+                startedAt,
+                typicalSeconds: typicalVideoSeconds(videoSeconds)
+            });
             window.scrollTo({ top: 0, behavior: 'smooth' });
 
             const jobId = await startVideo(
-                { prompt, size: genSize, image, passwordHash: clientPasswordHash },
+                { prompt, size: genSize, seconds: videoSeconds, image, passwordHash: clientPasswordHash },
                 controller.signal
             );
             // Only a server path survives a reload; attached photos live in this page's memory.
-            job = { jobId, prompt, startedAt, aspect, baseUrl: baseUrl?.startsWith('/api/') ? baseUrl : null };
+            job = {
+                jobId,
+                prompt,
+                startedAt,
+                aspect,
+                seconds: videoSeconds,
+                baseUrl: baseUrl?.startsWith('/api/') ? baseUrl : null
+            };
             savePendingVideoJob(job);
             job = { ...job, baseUrl };
             setGenPrompt('');
@@ -1191,6 +1229,69 @@ export default function HomePage() {
         if (references.length > 0) handleReuseWithReferences(stageEntry.prompt, references);
         else handleReusePrompt(stageEntry.prompt, stageIsVideo ? 'video' : 'generate');
     };
+
+    // The tab title shows progress, and says so when a result arrives while you are elsewhere.
+    const [finishedWhileAway, setFinishedWhileAway] = React.useState(false);
+    const wasLoading = React.useRef(false);
+    React.useEffect(() => {
+        if (wasLoading.current && !isLoading && document.hidden) setFinishedWhileAway(true);
+        wasLoading.current = isLoading;
+    }, [isLoading]);
+    React.useEffect(() => {
+        const onVisible = () => {
+            if (!document.hidden) setFinishedWhileAway(false);
+        };
+        document.addEventListener('visibilitychange', onVisible);
+        return () => document.removeEventListener('visibilitychange', onVisible);
+    }, []);
+    React.useEffect(() => {
+        document.title = isLoading
+            ? `${pending?.kind === 'video' ? 'Making video' : 'Making image'}… · ${SITE_TITLE}`
+            : finishedWhileAway
+              ? `✓ Ready · ${SITE_TITLE}`
+              : SITE_TITLE;
+    }, [isLoading, pending?.kind, finishedWhileAway]);
+
+    // Keyboard: "/" jumps to the prompt; left and right step through the gallery.
+    const galleryItems = React.useMemo(
+        () =>
+            history.filter((item) =>
+                item.mode === 'video' ? (item.videos?.length ?? 0) > 0 : (item.images?.length ?? 0) > 0
+            ),
+        [history]
+    );
+    const keyboardState = React.useRef({ galleryItems, stageEntry, isLoading, handleHistorySelect });
+    React.useEffect(() => {
+        keyboardState.current = { galleryItems, stageEntry, isLoading, handleHistorySelect };
+    });
+    React.useEffect(() => {
+        const onKeyDown = (event: KeyboardEvent) => {
+            if (event.metaKey || event.ctrlKey || event.altKey) return;
+            const target = event.target;
+            const typing =
+                target instanceof HTMLElement &&
+                (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT', 'VIDEO'].includes(target.tagName));
+            if (typing || document.querySelector('[role="dialog"]')) return;
+            if (event.key === '/') {
+                event.preventDefault();
+                document.getElementById('prompt')?.focus();
+                return;
+            }
+            if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+            const state = keyboardState.current;
+            if (state.isLoading || !state.stageEntry) return;
+            const index = state.galleryItems.findIndex((item) => item.timestamp === state.stageEntry?.timestamp);
+            const next = state.galleryItems[index + (event.key === 'ArrowRight' ? 1 : -1)];
+            if (index < 0 || !next) return;
+            event.preventDefault();
+            state.handleHistorySelect(next);
+        };
+        window.addEventListener('keydown', onKeyDown);
+        return () => window.removeEventListener('keydown', onKeyDown);
+    }, []);
+
+    const showMotionIdeas =
+        makingVideo && !isLoading && !genPrompt.trim() && (editTarget !== null || genReferenceImages.length > 0);
 
     return (
         <main className='text-foreground relative flex min-h-dvh flex-col items-center px-4 pb-10 sm:px-8'>
@@ -1294,7 +1395,7 @@ export default function HomePage() {
                             disabled={isLoading}
                             className='border-border h-9 rounded-full bg-transparent px-3.5'>
                             <Plus className='h-4 w-4' />
-                            New image
+                            New
                         </Button>
                     )}
                     {isPasswordRequiredByBackend && (
@@ -1385,7 +1486,9 @@ export default function HomePage() {
                     maxReferenceImages={makingVideo ? 1 : MAX_REFERENCE_IMAGES}
                     outputMode={makingVideo ? 'video' : 'image'}
                     setOutputMode={videoInfo ? chooseOutputMode : undefined}
-                    videoSeconds={videoInfo?.seconds ?? 0}
+                    videoSeconds={videoSeconds}
+                    videoSecondsOptions={videoInfo?.options ?? []}
+                    setVideoSeconds={setVideoSeconds}
                     editTargetUrl={editTarget?.path ?? null}
                     onStopEditing={() => setEditStage(false)}
                     onEnhance={handlePromptEnhance}
@@ -1398,6 +1501,26 @@ export default function HomePage() {
                     autoFocus
                 />
 
+                {showMotionIdeas && (
+                    <ul
+                        aria-label='Ways it could move'
+                        className='-mt-2 grid w-full grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:justify-center'>
+                        {MOTION_IDEAS.map((idea) => (
+                            <li key={idea.label}>
+                                <button
+                                    type='button'
+                                    onClick={() => {
+                                        setGenPrompt(idea.prompt);
+                                        document.getElementById('prompt')?.focus();
+                                    }}
+                                    className='bg-card/70 border-border text-foreground/90 hover:border-foreground/30 hover:bg-card focus-visible:ring-ring w-full rounded-full border px-3.5 py-2 text-sm transition-colors focus-visible:ring-2 focus-visible:outline-none'>
+                                    {idea.label}
+                                </button>
+                            </li>
+                        ))}
+                    </ul>
+                )}
+
                 {!hasStage && (
                     <ul
                         aria-label='Or start from an example'
@@ -1408,7 +1531,6 @@ export default function HomePage() {
                                     type='button'
                                     onClick={() => {
                                         setGenPrompt(example.prompt);
-                                        setOutputMode('image');
                                         document.getElementById('prompt')?.focus();
                                     }}
                                     className='bg-card/70 border-border text-foreground/90 hover:border-foreground/30 hover:bg-card focus-visible:ring-ring flex w-full items-center gap-2.5 rounded-full border py-1.5 pr-4 pl-1.5 text-sm transition-colors focus-visible:ring-2 focus-visible:outline-none'>

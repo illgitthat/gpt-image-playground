@@ -3,6 +3,7 @@ import { ipLimiter } from '@/lib/ip-limit';
 import {
     aspectRatioForSize,
     cancelVideo,
+    chooseVideoSeconds,
     DEFAULT_MOTION_PROMPT,
     downloadVideo,
     estimateVideoCost,
@@ -75,6 +76,7 @@ export async function POST(request: NextRequest) {
     const hasImage = image instanceof File && image.size > 0;
     const typed = ((form.get('prompt') as string | null) ?? '').trim();
     const prompt = typed || (hasImage ? DEFAULT_MOTION_PROMPT : '');
+    const seconds = chooseVideoSeconds(config, form.get('seconds'));
     const client = clientInfo(request.headers);
     const log = (status: VideoGenerationLogEntry['status'], extra: Partial<VideoGenerationLogEntry> = {}) =>
         logVideoGeneration({
@@ -83,7 +85,7 @@ export async function POST(request: NextRequest) {
             status,
             model: config.model,
             prompt,
-            seconds: config.seconds,
+            seconds,
             resolution: config.resolution,
             references: hasImage ? 1 : 0,
             files: [],
@@ -145,7 +147,8 @@ export async function POST(request: NextRequest) {
         const jobId = await submitVideo(config, {
             prompt,
             imageDataUri: frame ? `data:image/jpeg;base64,${frame.toString('base64')}` : undefined,
-            aspectRatio: aspectRatioForSize(form.get('size') as string | null)
+            aspectRatio: aspectRatioForSize(form.get('size') as string | null),
+            seconds
         });
         if (frame) {
             // A small still for the gallery, since the server has no way to grab a video frame.
@@ -158,9 +161,9 @@ export async function POST(request: NextRequest) {
         }
         await log('ok', {
             files: [videoFilename(jobId)],
-            estimated_cost_usd: estimateVideoCost(config.seconds, config.resolution)
+            estimated_cost_usd: estimateVideoCost(seconds, config.resolution)
         });
-        return NextResponse.json({ jobId, seconds: config.seconds });
+        return NextResponse.json({ jobId, seconds });
     } catch (error) {
         const { message, response } = errorResponse(error, 'The video could not be started.');
         await log('error', { error: message });
@@ -184,8 +187,7 @@ export async function GET(request: NextRequest) {
             status: 'completed',
             filename,
             poster: (await exists(path.join(outputDir, posterFilename(jobId)))) ? posterFilename(jobId) : null,
-            model: config.model,
-            seconds: config.seconds
+            model: config.model
         });
 
     try {

@@ -2,7 +2,7 @@
 
 import type { ImageSize } from '@/components/composer';
 import { ImageLightbox, type LightboxMedia } from '@/components/image-lightbox';
-import { canShareImages, downloadImage, shareImage } from '@/lib/image-download';
+import { canShareImages, downloadImage, downloadName, shareImage } from '@/lib/image-download';
 import { cn } from '@/lib/utils';
 import {
     Check,
@@ -31,6 +31,8 @@ export type PendingGeneration = {
     baseUrl: string | null;
     // CSS aspect ratio of the result when it is not implied by `size`.
     aspect?: string;
+    // How long this usually takes, when it differs from the default for its kind.
+    typicalSeconds?: number;
     // When the request began, if not just now (a video picked back up after a reload).
     startedAt?: number;
 };
@@ -81,7 +83,7 @@ function Developing({ pending, completedCount }: { pending: PendingGeneration; c
         return () => clearInterval(timer);
     }, [pending.startedAt]);
 
-    const typical = TYPICAL_SECONDS[pending.kind];
+    const typical = pending.typicalSeconds ?? TYPICAL_SECONDS[pending.kind];
     // Ease toward 95% so the bar never claims to be done before the result arrives.
     const progress = Math.min(95, 100 * (1 - Math.exp(-elapsed / (typical / 2))));
     const overdue = elapsed > typical * 1.6;
@@ -251,8 +253,9 @@ export function Stage({
         setBusy(kind);
         setActionError(null);
         try {
-            if (kind === 'download') await downloadImage(current.path, current.filename);
-            else await shareImage(current.path, current.filename);
+            const name = downloadName(prompt, current.filename, images.indexOf(current));
+            if (kind === 'download') await downloadImage(current.path, name);
+            else await shareImage(current.path, name);
         } catch (error) {
             console.error(`${kind} failed:`, error);
             setActionError(error instanceof Error ? error.message : 'That did not work. Try again.');
@@ -272,7 +275,7 @@ export function Stage({
     };
 
     return (
-        <div className='stage-in flex w-full flex-col items-center gap-3'>
+        <div key={current.filename} className='stage-in flex w-full flex-col items-center gap-3'>
             <div className='relative max-w-full'>
                 {video ? (
                     <video
