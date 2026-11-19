@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# Auto-update GPT Image Playground from GitHub (installed as /usr/local/sbin/gpt-image-playground-update and run by
+# gpt-image-playground-update.timer every 5 minutes). Fast-forwards to origin/main, reinstalls dependencies only when
+# package-lock.json changed (npm ci empties node_modules, which the running server still uses), builds, restarts.
+set -euo pipefail
+
+APP_DIR=/opt/gpt-image-playground
+APP_USER=gptimage
+APP_SERVICE=gpt-image-playground.service
+NPM=/usr/bin/npm
+LOCK_FILE=/run/gpt-image-playground-update.lock
+
+exec 9>"$LOCK_FILE"
+if ! flock -n 9; then
+  echo "Another update is already running; exiting."
+  exit 0
+fi
+
+run_as_app() {
+  sudo -n -H -u "$APP_USER" -- "$@"
+}
+
+cd "$APP_DIR"
+
+current_commit=$(run_as_app git -C "$APP_DIR" rev-parse HEAD)
+run_as_app git -C "$APP_DIR" fetch --quiet origin main
+remote_commit=$(run_as_app git -C "$APP_DIR" rev-parse origin/main)
+
+if [[ "$current_commit" == "$remote_commit" ]]; then
+  echo "Already current at ${current_commit:0:12}."
+  exit 0
+fi
+
+if [[ -n "$(run_as_app git -C "$APP_DIR" status --porcelain)" ]]; then
+  echo "Working tree is dirty; refusing to auto-update."
+  run_as_app git -C "$APP_DIR" status --short
+  exit 1
+fi
+
+echo "Updating from ${current_commit:0:12} to ${remote_commit:0:12}."
+run_as_app git -C "$APP_DIR" merge --ff-only origin/main
+if [[ ! -d "$APP_DIR/node_modules" ]] || ! run_as_app git -C "$APP_DIR" diff --quiet "$current_commit" "$remote_commit" -- package-lock.json; then
+  echo "package-lock.json changed; reinstalling dependencies."
+  run_as_app "$NPM" ci --no-audit --no-fund
+fi
+run_as_app "$NPM" run build
+systemctl restart "$APP_SERVICE"
+echo "Updated and restarted $APP_SERVICE at ${remote_commit:0:12}."

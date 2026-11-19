@@ -1,6 +1,6 @@
 import { parseImageOptions } from '../src/lib/image-options';
 import { createImageQuota } from '../src/lib/image-quota';
-import { afterAll, describe, expect, test } from 'bun:test';
+import { afterAll, describe, expect, test } from 'vitest';
 
 const savedEnabled = process.env.ENABLED_IMAGE_MODELS;
 process.env.ENABLED_IMAGE_MODELS = 'MAI-Image-2.7,gpt-image-2.5-flare,gpt-image-2.5-sunburst';

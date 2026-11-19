@@ -1,4 +1,5 @@
-import { afterAll, beforeEach, describe, expect, test } from 'bun:test';
+import { afterAll, beforeEach, describe, expect, test } from 'vitest';
+import { serve } from './helpers/serve';
 import { NextRequest } from 'next/server';
 
 type PromptRequest = {
@@ -8,7 +9,7 @@ type PromptRequest = {
 };
 
 const requests: PromptRequest[] = [];
-const upstream = Bun.serve({
+const upstream = await serve({
     port: 0,
     async fetch(request) {
         requests.push(await request.json());

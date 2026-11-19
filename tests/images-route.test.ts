@@ -1,10 +1,11 @@
 import { readImageStream } from '../src/lib/image-stream';
-import { afterAll, beforeEach, describe, expect, spyOn, test } from 'bun:test';
+import { serve } from './helpers/serve';
 import fs from 'fs';
 import { NextRequest } from 'next/server';
 import os from 'os';
 import path from 'path';
 import sharp from 'sharp';
+import { afterAll, beforeEach, describe, expect, test, vi } from 'vitest';
 
 type UpstreamRequest = {
     deployment: string | null;
@@ -23,7 +24,7 @@ const png = (
 let requests: UpstreamRequest[] = [];
 let outcome: 'success' | 'partial-failure' | 'quota' | 'stream-failure' | 'no-image' | 'hanging' = 'success';
 let onUpstreamAbort: (() => void) | undefined;
-const upstream = Bun.serve({
+const upstream = await serve({
     port: 0,
     async fetch(request) {
         const body: UpstreamRequest['body'] = await request.json();
@@ -82,7 +83,7 @@ const upstream = Bun.serve({
 type MaiRequest = { path: string; apiKey: string | null; json?: Record<string, unknown>; form?: FormData };
 let maiRequests: MaiRequest[] = [];
 let maiOutcome: 'success' | 'quota' = 'success';
-const mai = Bun.serve({
+const mai = await serve({
     port: 0,
     async fetch(request) {
         const path = new URL(request.url).pathname;
@@ -127,7 +128,7 @@ process.env.NEXT_PUBLIC_IMAGE_STORAGE_MODE = 'indexeddb';
 delete process.env.APP_PASSWORD;
 const { POST } = await import('../src/app/api/images/route');
 let now = Date.now();
-const clock = spyOn(Date, 'now').mockImplementation(() => now);
+const clock = vi.spyOn(Date, 'now').mockImplementation(() => now);
 
 beforeEach(() => {
     requests = [];
