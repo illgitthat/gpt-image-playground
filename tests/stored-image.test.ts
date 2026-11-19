@@ -1,8 +1,8 @@
-import { afterAll, describe, expect, test } from 'bun:test';
 import fs from 'fs';
 import { NextRequest } from 'next/server';
 import os from 'os';
 import path from 'path';
+import { afterAll, describe, expect, test } from 'vitest';
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'stored-image-'));
 const dir = path.join(root, 'generated-images');

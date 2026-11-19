@@ -6,19 +6,19 @@ Generate and edit images with MAI Image 2.7 (default) or GPT Image 2.5 Flare and
 
 ## Quick start
 
-Use Node.js 26 LTS and [Bun](https://bun.sh).
+Use Node.js 26 LTS (npm comes with it).
 
 ```bash
 git clone https://github.com/illgitthat/gpt-image-playground.git
 cd gpt-image-playground
-bun install
+npm install
 cp .env.local.example .env.local
 ```
 
 Add your API configuration to `.env.local` using one of the options below, then run:
 
 ```bash
-bun run dev
+npm run dev
 ```
 
 Open [localhost:3000](http://localhost:3000).
@@ -83,24 +83,29 @@ Size controls are limited to auto, square, landscape, and portrait; quality cont
 
 | Command | Purpose |
 | --- | --- |
-| `bun run dev` | Start the development server. |
-| `bun run typecheck` | Check application and test types. |
-| `bun run lint` | Run ESLint. |
-| `bun test` | Run tests without paid API calls. |
-| `bun run format` | Format source files. |
+| `npm run dev` | Start the development server. |
+| `npm run typecheck` | Check application and test types. |
+| `npm run lint` | Run ESLint. |
+| `npm test` | Run tests (Vitest) without paid API calls. |
+| `npm run format` | Format source files. |
 
 Pull requests run type checks, lint, tests, and a production build.
 
 ## Deployment
 
 ```bash
-bun run build
-bun run start
+npm ci
+npm run build
+npm run start
 ```
 
-An example [systemd service](./deploy/gpt-image-playground.service) is included. Adjust its user, working directory, and Bun path for your host.
+The [`deploy/`](./deploy) folder has what the production server (images.adamcbloom.com) uses:
 
-For a reverse proxy, allow long-running requests and disable response buffering so image previews can stream.
+- [`gpt-image-playground.service`](./deploy/gpt-image-playground.service): systemd unit that runs `next start` with Node. Adjust its user, working directory, and port for your host.
+- [`gpt-image-playground-update`](./deploy/gpt-image-playground-update): auto-update script (run by a systemd timer every 5 minutes). It fast-forwards to `origin/main`, reinstalls dependencies only when `package-lock.json` changed, builds, and restarts the service.
+- [`nginx-site.conf`](./deploy/nginx-site.conf): local-only nginx site in front of the app. Public traffic arrives through a Cloudflare Tunnel (`cloudflared`), so the server needs no open web ports.
+
+For any reverse proxy, allow long-running requests and disable response buffering so image previews can stream.
 
 ## License
 

@@ -1,5 +1,5 @@
 import { EMPTY_PROMPT_DRAFT, promptDraftReducer as reduce } from '../src/lib/prompt-draft';
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 
 describe('prompt edits', () => {
     test('a delayed enhancement cannot overwrite typing, even after reverting to the original', () => {

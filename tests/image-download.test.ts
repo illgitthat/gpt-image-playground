@@ -6,10 +6,11 @@ import {
     filenameForBlob,
     shareImage
 } from '../src/lib/image-download';
-import { afterAll, describe, expect, test } from 'bun:test';
+import { serve } from './helpers/serve';
+import { afterAll, describe, expect, test } from 'vitest';
 
 const image = new Uint8Array([137, 80, 78, 71]);
-const server = Bun.serve({
+const server = await serve({
     port: 0,
     fetch(request) {
         switch (new URL(request.url).pathname) {

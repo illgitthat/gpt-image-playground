@@ -1,5 +1,5 @@
 import { readImageStream } from '../src/lib/image-stream';
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 
 const image = { filename: 'image.png', output_format: 'png', b64_json: 'YWJj' };
 const event = (value: object) => `data: ${JSON.stringify(value)}\r\n\r\n`;

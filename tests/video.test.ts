@@ -15,7 +15,7 @@ import {
     type VideoConfig
 } from '../src/lib/video';
 import { clearPendingVideoJob, loadPendingVideoJob, savePendingVideoJob } from '../src/lib/video-client';
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, test } from 'vitest';
 
 const ENDPOINT = 'https://gateway.example/resource/providers/falai/v1/minimax/h3-max-turbo';
 const JOB = '2f7a5291-483b-401f-a79d-2a90703e1714';
